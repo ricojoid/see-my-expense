@@ -22,7 +22,7 @@ export default function UpcomingBills({ onNavigate }) {
   return (
     <Card
       title="Coming up"
-      subtitle={outgoing ? `${money(outgoing)} still to go out this month` : 'Still to come this month'}
+      subtitle={outgoing ? `${money(outgoing)} still to go out this period` : 'Still to come this period'}
       delay={0.18}
       action={
         <Button size="sm" variant="ghost" onClick={() => onNavigate('settings', 'recurring')}>

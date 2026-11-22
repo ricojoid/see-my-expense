@@ -14,6 +14,7 @@ import TransactionGroups from '../transactions/TransactionGroups';
 import BudgetList from '../insights/BudgetList';
 import SpendingCard from './SpendingCard';
 import WeeklyRecap from './WeeklyRecap';
+import BalancesCard from './BalancesCard';
 import UpcomingBills from './UpcomingBills';
 import GoalsCard from './GoalsCard';
 
@@ -72,6 +73,7 @@ export default function HomePage({ onNavigate }) {
         </div>
 
         <div className="min-w-0 space-y-5 lg:col-span-2">
+          <BalancesCard />
           <UpcomingBills onNavigate={onNavigate} />
           <Card title="Last 6 months" subtitle="Income vs expense" delay={0.15} action={<Legend />}>
             {stats.data ? <TrendChart data={stats.data.trend} /> : <Skeleton className="h-[200px]" />}

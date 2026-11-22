@@ -18,6 +18,13 @@ router.put(
   asyncHandler(async (req, res) => res.json(await accounts.rename(req.user.id, req.id, req.body || {})))
 );
 
+/** { balance }: what the account really holds now (from the bank / e-wallet app). */
+router.put(
+  '/:id/balance',
+  idParam,
+  asyncHandler(async (req, res) => res.json(await accounts.setBalance(req.user.id, req.id, req.body?.balance)))
+);
+
 router.delete(
   '/:id',
   idParam,

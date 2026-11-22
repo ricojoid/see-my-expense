@@ -1,9 +1,12 @@
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import AnimatedNumber from '../../components/ui/AnimatedNumber';
 import Icon from '../../components/ui/Icon';
 import { useMoney } from '../../context/PrivacyContext';
-import { currentMonth, daysElapsed, formatMonth } from '../../lib/dates';
+import { useData } from '../../context/DataContext';
+import { formatMonth, formatPeriodRange } from '../../lib/dates';
 import Projection from './Projection';
+import CloseBooksSheet from './CloseBooksSheet';
 
 function Stat({ label, value, icon, tone, large = false }) {
   const money = useMoney();
@@ -25,13 +28,15 @@ function Stat({ label, value, icon, tone, large = false }) {
 }
 
 /**
- * This month at a glance: income, outcome and average outcome per day,
+ * This period at a glance: income, outcome and average outcome per day,
  * side by side and never netted (not every income source is tracked here).
+ * The current period can be closed here on payday ("tutup buku").
  */
 export default function SpendingCard({ summary, month }) {
-  const money = useMoney();
+  const { period } = useData();
+  const [closing, setClosing] = useState(false);
   const expense = summary?.expense ?? 0;
-  const days = daysElapsed(month);
+  const days = period?.daysElapsed ?? 0;
 
   return (
     <motion.section
@@ -51,7 +56,22 @@ export default function SpendingCard({ summary, month }) {
       </svg>
 
       <div className="relative">
-        <div className="text-sm font-medium text-ink-2">{formatMonth(month)}</div>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-sm font-medium text-ink-2">{formatMonth(month)}</div>
+            {period?.booked && <div className="text-xs text-ink-3">{formatPeriodRange(period)}</div>}
+          </div>
+          {period?.current && (
+            <button
+              type="button"
+              onClick={() => setClosing(true)}
+              className="-mr-1 -mt-1 inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-black/25 px-2.5 py-1.5 text-xs font-semibold text-ink-2 backdrop-blur hover:bg-black/40 hover:text-ink"
+            >
+              <Icon name="book" size={14} />
+              Close books
+            </button>
+          )}
+        </div>
         <div className="mt-3 grid grid-cols-2 gap-2.5">
           <Stat large label="Income" value={summary?.income ?? 0} icon="arrow-down" tone="bg-income/20 text-income" />
           <Stat large label="Outcome" value={expense} icon="arrow-up" tone="bg-expense/20 text-expense" />
@@ -59,8 +79,9 @@ export default function SpendingCard({ summary, month }) {
             <Stat label="Avg outcome / day" value={days ? expense / days : 0} icon="calendar" tone="bg-white/10 text-ink-2" />
           </div>
         </div>
-        {month === currentMonth() && <Projection />}
+        {period?.current && <Projection />}
       </div>
+      <CloseBooksSheet open={closing} onClose={() => setClosing(false)} />
     </motion.section>
   );
 }

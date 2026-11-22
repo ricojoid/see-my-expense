@@ -19,6 +19,14 @@ export const authApi = {
   changePassword: (currentPassword, newPassword) => http.put('/auth/me/password', { currentPassword, newPassword }),
 };
 
+/** Book periods ("tutup buku"): a month key's dates, closing the books on payday. */
+export const periodsApi = {
+  get: (month) => http.get('/periods', { month }),
+  /** when: 'today' (new period from tomorrow) or 'yesterday' (from today); balances: optional { accountId: amount } to start afresh */
+  close: (when, balances) => http.post('/periods/close', { when, balances }),
+  undoClose: () => http.del('/periods/close'),
+};
+
 export const transactionsApi = {
   list: (filters) => http.get('/transactions', filters),
   summary: (month) => http.get('/transactions/summary', { month }),
@@ -61,6 +69,8 @@ export const accountsApi = {
   list: () => http.get('/accounts'),
   create: (name) => http.post('/accounts', { name }),
   rename: (id, name) => http.put(`/accounts/${id}`, { name }),
+  /** What the account really holds now; moves its opening balance, adds no transaction. */
+  setBalance: (id, balance) => http.put(`/accounts/${id}/balance`, { balance }),
   remove: (id) => http.del(`/accounts/${id}`),
 };
 

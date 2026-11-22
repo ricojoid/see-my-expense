@@ -3,8 +3,9 @@ import { useData } from '../../context/DataContext';
 import { useMoney } from '../../context/PrivacyContext';
 import { useFetch } from '../../hooks/useFetch';
 import Icon from '../../components/ui/Icon';
+import { formatDayMonth } from '../../lib/dates';
 
-/** "Heading for ~Rp 4.200.000 this month", and how that compares with the budgets. */
+/** "Heading for ~Rp 4.200.000 by 25 Dec" (the period's expected end), and how that compares with the budgets. */
 export default function Projection() {
   const { version } = useData();
   const money = useMoney();
@@ -18,7 +19,7 @@ export default function Projection() {
         <Icon name="chart" size={12} strokeWidth={2.4} />
       </span>
       <div className="min-w-0 text-ink-2">
-        Heading for about <b className="tabular text-ink">{money(p.projected)}</b> by month end
+        Heading for about <b className="tabular text-ink">{money(p.projected)}</b> by {p.endsOn ? formatDayMonth(p.endsOn) : 'the end of the period'}
         {p.early && <span className="text-ink-3"> (early guess)</span>}
         {p.budget != null && (
           <span className={`block text-xs ${over ? 'text-expense' : 'text-ink-3'}`}>

@@ -50,13 +50,14 @@ export function greeting(now = new Date()) {
   return 'Good evening';
 }
 
-/** Days of `month` that have passed: today's date for the current month, all days for past ones, 0 for future ones. */
-export function daysElapsed(month) {
-  const current = currentMonth();
-  if (month > current) return 0;
-  if (month === current) return new Date().getDate();
-  const [y, m] = month.split('-').map(Number);
-  return new Date(y, m, 0).getDate();
+/** "25 Dec" */
+export const formatDayMonth = (dateString) => parse(dateString).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+
+/** "26 Nov - 25 Dec" for a book period; an open current one ends "today". */
+export function formatPeriodRange(period) {
+  if (!period) return '';
+  const end = !period.end && period.current ? 'today' : formatDayMonth(period.lastDay);
+  return `${formatDayMonth(period.start)} - ${end}`;
 }
 
 /** 'YYYY-MM-DD' plus `days` (may be negative), in local time. */

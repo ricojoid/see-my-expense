@@ -15,6 +15,7 @@ router.use('/people', requireAuth, require('./people.routes'));
 router.use('/notifications', requireAuth, require('./notifications.routes'));
 router.use('/telegram', requireAuth, require('./telegram.routes'));
 router.use('/insights', requireAuth, require('./insights.routes'));
+router.use('/periods', requireAuth, require('./periods.routes'));
 router.use('/goals', requireAuth, require('./goals.routes'));
 router.use('/transactions', requireAuth, require('./transactions.routes'));
 

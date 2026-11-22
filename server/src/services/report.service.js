@@ -1,6 +1,7 @@
 const PDFDocument = require('pdfkit');
 const { sql, getPool } = require('../config/db');
-const { monthRange, todayLocal } = require('../lib/dates');
+const { todayLocal } = require('../lib/dates');
+const periods = require('./periods.service');
 const { formatRupiah } = require('../lib/format');
 const transactions = require('./transactions.service');
 const budgets = require('./budgets.service');
@@ -28,8 +29,13 @@ const shortDate = (date) => {
   return new Date(y, m - 1, d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 };
 
-async function topExpenses(userId, month, limit = 8) {
-  const { start, end } = monthRange(month);
+/** "26 Nov - 25 Dec 2026", or "... - today" while the period is open. */
+function periodRange(period) {
+  const end = period.end ? `${shortDate(period.lastDay)} ${period.lastDay.slice(0, 4)}` : 'today';
+  return `${shortDate(period.start)} - ${end}`;
+}
+
+async function topExpenses(userId, { start, end }, limit = 8) {
   const pool = await getPool();
   const r = await pool
     .request()
@@ -48,18 +54,19 @@ async function topExpenses(userId, month, limit = 8) {
 }
 
 async function reportData(userId, month) {
-  const today = todayLocal();
-  const days = month === today.slice(0, 7) ? Number(today.slice(8, 10)) : new Date(...month.split('-').map(Number), 0).getDate();
+  const period = await periods.get(userId, month);
+  const days = period.daysElapsed;
   const [summary, stats, top, budgetRows, ppl, goalList] = await Promise.all([
     transactions.summary(userId, month),
     transactions.stats(userId, month),
-    topExpenses(userId, month),
+    topExpenses(userId, { start: period.start, end: period.end || '9999-12-31' }),
     budgets.listForMonth(userId, month),
     people.list(userId),
     goals.list(userId),
   ]);
   return {
     month,
+    period,
     summary,
     avgPerDay: days ? summary.expense / days : 0,
     categories: stats.expenseByCategory,
@@ -106,7 +113,8 @@ function draw(doc, data, username) {
   // Header band
   doc.rect(0, 0, doc.page.width, 96).fill(C.band);
   doc.font('Helvetica-Bold').fontSize(9).fillColor(C.accent).text('SEE MY EX-PENSE · MONTHLY REPORT', left, 30);
-  doc.font('Helvetica-Bold').fontSize(22).fillColor('#ffffff').text(monthName(data.month), left, 46);
+  doc.font('Helvetica-Bold').fontSize(22).fillColor('#ffffff').text(monthName(data.period.key), left, 46);
+  doc.font('Helvetica').fontSize(9).fillColor('#a7abb8').text(periodRange(data.period), left, 74);
   doc.font('Helvetica').fontSize(9).fillColor('#a7abb8').text(username, left, 46, { width, align: 'right' });
 
   // Three totals, side by side and never netted.

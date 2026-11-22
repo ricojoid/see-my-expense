@@ -425,6 +425,30 @@ async function ensureTelegram(h) {
   }
 }
 
+/** What an account held before its first transaction here, so its balance matches the real one. */
+async function ensureAccountOpeningBalance(h) {
+  if (await h.columnExists('accounts', 'opening_balance')) return;
+  await h.q(`ALTER TABLE accounts ADD opening_balance DECIMAL(14,2) NOT NULL CONSTRAINT DF_accounts_opening DEFAULT 0;`);
+  log('accounts: added opening_balance');
+}
+
+/** Book closings ("tutup buku"): each row starts a new period on payday. */
+async function ensureBookClosings(h) {
+  if (await h.tableExists('book_closings')) return;
+  await h.q(`
+    CREATE TABLE book_closings (
+      id INT IDENTITY(1,1) PRIMARY KEY,
+      user_id INT NOT NULL CONSTRAINT FK_book_closings_user REFERENCES users(id),
+      starts_on DATE NOT NULL,
+      period_key CHAR(7) NOT NULL,
+      created_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
+      CONSTRAINT UQ_book_closings_start UNIQUE (user_id, starts_on),
+      CONSTRAINT UQ_book_closings_key UNIQUE (user_id, period_key)
+    );
+  `);
+  log('created table book_closings');
+}
+
 async function main() {
   log(`connecting to ${server} (${useSqlAuth ? 'SQL auth' : 'Windows auth'})...`);
   await ensureDatabase();
@@ -443,6 +467,8 @@ async function main() {
     await ensureTelegram(h);
     await ensureCategoryRules(h);
     await ensureGoals(h);
+    await ensureBookClosings(h);
+    await ensureAccountOpeningBalance(h);
 
     const cats = await h.q(`SELECT COUNT(*) AS n FROM categories WHERE user_id = ${adminId}`);
     if (cats.recordset[0].n === 0) {

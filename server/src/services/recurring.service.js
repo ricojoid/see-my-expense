@@ -1,5 +1,6 @@
 const { sql, getPool, withTransaction } = require('../config/db');
-const { todayLocal, dueRuns, monthRange } = require('../lib/dates');
+const { todayLocal, dueRuns } = require('../lib/dates');
+const periods = require('./periods.service');
 const { notFound } = require('../lib/http');
 const { assertTransactionRefs } = require('./ownership.service');
 
@@ -24,9 +25,9 @@ async function list(userId) {
   return result.recordset.map(toRule);
 }
 
-/** Active rules still to run this month (after today), soonest first. Call after materialize(). */
+/** Active rules still to run in the current book period (after today), soonest first. Call after materialize(). */
 async function upcoming(userId, today = todayLocal()) {
-  const { end } = monthRange(today.slice(0, 7));
+  const end = (await periods.current(userId, today)).expectedEnd;
   const pool = await getPool();
   const result = await pool
     .request()

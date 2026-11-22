@@ -9,6 +9,7 @@ const ROLES = ['admin', 'user'];
 // Order matters: children before what they reference.
 const USER_OWNED_TABLES = [
   'category_rules',
+  'book_closings',
   'goals', // goal_contributions go with them (ON DELETE CASCADE)
   'transactions', // telegram_messages go with them
   'recurring_transactions',

@@ -5,8 +5,11 @@
  * Pure: everything it needs comes in, so it is easy to test.
  *
  *   parseQuick(text, { categories, accounts, people, rules, today })
- *     -> { type?, amount?, categoryId?, categoryFallback?, accountId?, occurredOn?,
+ *     -> { type?, amount?, categoryId?, categoryFallback?, accountId?, toAccountId?, occurredOn?,
  *          description, debt?, personId?, personName?, split? }
+ *
+ * Moving money between your own accounts ("isi gopay 1jt", "tf 500k dari bca
+ * ke gopay", "tarik tunai 300k") comes back as type 'transfer'.
  *
  * `rules` are keywords the user taught ({ keyword, categoryId }); they win.
  * Split bills ("makan 300k bagi 3 sama budi sari") come back with
@@ -200,6 +203,77 @@ const OTHER_CATEGORY = /^(other|others|lain|lainnya|lain-lain|misc|etc)\b/i;
 const words = (s) => s.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
 
+// ---- Transfers between your own accounts ----
+
+const TOP_UP = /\b(?:isi(?:\s+ulang)?|ngisi|isiin|top\s*-?\s*up|topup)\s+(?:saldo\s+)?/i;
+const MOVE = /\b(?:tf|trf|transfer|pindah(?:in)?|mindahin|kirim)\b/i;
+const WITHDRAW = /\btarik(?:\s+tunai)?\b/i;
+const FROM = /\b(?:dari|pake|pakai|via|from)\s+/i;
+const TO = /\b(?:ke|to)\s+/i;
+const BANK_LIKE = /\b(bank|rekening|bca|bri|bni|mandiri|jago|seabank|blu|permata|cimb|btn|ocbc|danamon|btpn|jenius)\b/i;
+const CASH_LIKE = /\b(cash|tunai|dompet|uang)\b/i;
+
+/** The account named in the (up to) three words after `marker`, with the text it used. */
+function accountAfter(text, marker, accounts) {
+  const m = marker.exec(text);
+  if (!m) return null;
+  const next = text.slice(m.index + m[0].length).trim().split(/\s+/);
+  // Shortest first, so "gopay dari cash" is GoPay, not Cash.
+  for (let n = 1; n <= 3; n++) {
+    const account = findAccount(next.slice(0, n).join(' '), accounts);
+    if (account) return { account, marker: m[0] };
+  }
+  return null;
+}
+
+/** Where money usually comes from when you don't say: a bank account, else any other non-cash one. */
+const defaultSource = (accounts, to) =>
+  accounts.find((a) => a.id !== to.id && BANK_LIKE.test(a.name)) ||
+  accounts.find((a) => a.id !== to.id && !CASH_LIKE.test(a.name)) ||
+  accounts.find((a) => a.id !== to.id);
+
+/**
+ * "isi gopay 1jt" (from the bank), "topup ovo 200k dari bca", "tf 500k dari bca
+ * ke gopay", "tarik tunai 300k". Only when the destination is one of your
+ * accounts, so "isi bensin 50k" stays an expense.
+ */
+function readTransfer(text, accounts) {
+  if (accounts.length < 2) return null;
+  let to = null;
+  let label = 'Transfer';
+  const used = [];
+
+  const topUp = accountAfter(text, TOP_UP, accounts);
+  if (topUp) {
+    to = topUp.account;
+    label = `Top up ${to.name}`;
+    used.push(topUp.marker);
+  } else if (MOVE.test(text)) {
+    const dest = accountAfter(text, TO, accounts);
+    if (!dest) return null;
+    to = dest.account;
+    used.push(MOVE.exec(text)[0], dest.marker);
+  } else if (WITHDRAW.test(text)) {
+    to = accounts.find((a) => CASH_LIKE.test(a.name));
+    if (!to) return null;
+    label = 'Cash withdrawal';
+    used.push(WITHDRAW.exec(text)[0]);
+  } else {
+    return null;
+  }
+
+  const source = accountAfter(text, FROM, accounts);
+  let from = source?.account;
+  if (source) used.push(source.marker);
+  if (!from || from.id === to.id) {
+    // "tf bca ke gopay": the other account named, else the usual source.
+    const others = accounts.filter((a) => a.id !== to.id);
+    from = findAccount(text, others) || defaultSource(accounts, to);
+  }
+  if (!from || from.id === to.id) return null;
+  return { from, to, label, used };
+}
+
 // ---- Debts ----
 
 const WHO = String.raw`(?:si\s+)?([a-z][a-z0-9'.-]*)`;
@@ -348,6 +422,24 @@ export function parseQuick(text, { categories = [], accounts = [], people = [], 
   if (amount) {
     result.amount = amount.amount;
     removePhrase(amount.token);
+  }
+
+  // Money moved between your own accounts: no category, nothing spent.
+  const transfer = readTransfer(rest, accounts);
+  if (transfer) {
+    for (const phrase of transfer.used) removePhrase(phrase);
+    for (const account of [transfer.from, transfer.to]) {
+      for (const w of words(account.name)) rest = rest.replace(new RegExp(String.raw`\b${w}\b`, 'i'), ' ');
+    }
+    rest = rest.replace(/\b(dari|ke|pake|pakai|via|saldo|tunai)\b/gi, ' ');
+    const note = rest.replace(/\s+/g, ' ').trim();
+    return {
+      ...result,
+      type: 'transfer',
+      accountId: transfer.from.id,
+      toAccountId: transfer.to.id,
+      description: note ? note[0].toUpperCase() + note.slice(1) : transfer.label,
+    };
   }
 
   // Accounts first, so "... sama budi gopay" doesn't take GoPay for a person.

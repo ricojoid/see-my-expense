@@ -14,7 +14,7 @@ export default defineConfig({
     port: 5173,
     fs: { allow: ['.', shared] },
     proxy: {
-      '/api': 'http://localhost:4000',
+      '/api': process.env.API_URL || 'http://localhost:4000',
     },
   },
 });

@@ -1,24 +1,21 @@
 const { sql, getPool } = require('../config/db');
 const { addDays, dateInMonth, monthRange, shiftMonth, todayLocal } = require('../lib/dates');
+const periods = require('./periods.service');
 const transactions = require('./transactions.service');
 const recurring = require('./recurring.service');
 
-const daysIn = (month) => {
-  const [y, m] = month.split('-').map(Number);
-  return new Date(y, m, 0).getDate();
-};
-
 /**
- * Where this month's spending is heading: what's spent, plus the usual daily
- * spending for the days left (recurring bills left out of that rate), plus the
- * recurring bills still to come. Compared with the sum of monthly budgets.
+ * Where the current book period's spending is heading: what's spent, plus the
+ * usual daily spending for the days left (recurring bills left out of that
+ * rate), plus the recurring bills still to come. Compared with the budgets.
+ * An open period is expected to run a month from its start.
  */
 async function projection(userId, today = todayLocal()) {
-  const month = today.slice(0, 7);
-  const { start } = monthRange(month);
+  const period = await periods.current(userId, today);
+  const { start } = period;
   const tomorrow = addDays(today, 1);
-  const elapsed = Number(today.slice(8, 10));
-  const total = daysIn(month);
+  const elapsed = Math.max(1, period.daysElapsed);
+  const total = Math.max(elapsed, period.days);
 
   await recurring.materialize(userId);
   const [all, everyday, upcomingRules, budgetRow] = await Promise.all([
@@ -35,7 +32,8 @@ async function projection(userId, today = todayLocal()) {
   const projected = Math.round(all.expense + dailyRate * (total - elapsed) + upcoming);
   const budget = Number(budgetRow.recordset[0].total) || null;
   return {
-    month,
+    month: period.key,
+    endsOn: period.lastDay,
     spent: all.expense,
     projected,
     dailyRate: Math.round(dailyRate),

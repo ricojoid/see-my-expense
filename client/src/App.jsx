@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { AnimatePresence, MotionConfig, motion } from 'framer-motion';
+import { AnimatePresence, MotionConfig, PresenceContext, motion } from 'framer-motion';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { DataProvider } from './context/DataContext';
 import { ToastProvider } from './context/ToastContext';
@@ -59,6 +59,13 @@ function SignedInApp() {
       <DataProvider>
         <NavigationContext.Provider value={navigation}>
           <AppShell page={route.page} onNavigate={navigate}>
+            {/*
+              The page swap waits only for the page wrapper's own exit. Its
+              contents are cut off from this presence (value null): otherwise
+              any element inside that never finishes an exit (a layoutId
+              highlight, a list row) kept the old page forever and the screen
+              went blank.
+            */}
             <AnimatePresence mode="wait">
               <motion.div
                 key={`${route.page}-${route.key}`}
@@ -67,7 +74,9 @@ function SignedInApp() {
                 exit={{ opacity: 0, y: -6 }}
                 transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
               >
-                <Page {...pageProps} />
+                <PresenceContext.Provider value={null}>
+                  <Page {...pageProps} />
+                </PresenceContext.Provider>
               </motion.div>
             </AnimatePresence>
           </AppShell>

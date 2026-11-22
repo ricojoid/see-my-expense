@@ -1,4 +1,4 @@
-import { deleteRow, expect, goTo, isPhone, openNewTransaction, quickAdd, removePerson, test } from './fixtures.js';
+import { authHeader, deleteRow, expect, goTo, isPhone, openNewTransaction, quickAdd, removePerson, test } from './fixtures.js';
 
 /**
  * The main flows, on desktop and on a phone. Both runs share one throwaway
@@ -106,4 +106,49 @@ test('the eye button hides every amount', async ({ page }) => {
   await expect(page.getByText('Rp •••••').first()).toBeVisible();
   expect(await page.getByRole('main').innerText()).not.toMatch(/Rp\s?\d/);
   await page.getByRole('button', { name: 'Show amounts' }).click();
+});
+
+test('insights: switching to Earned and then leaving keeps the next page visible', async ({ page }) => {
+  await quickAdd(page, 'bonus e2e 1jt');
+  await goTo(page, 'Insights');
+  await page.getByRole('tab', { name: 'Earned' }).click();
+  await expect(page.getByRole('main').getByText('Other Income').first()).toBeVisible();
+  await goTo(page, 'Activity'); // used to leave a blank screen
+  const row = page.getByRole('main').getByRole('button', { name: /Bonus/ }).first();
+  await expect(row).toBeVisible();
+  await deleteRow(page, row);
+});
+
+test('close the books on payday, then undo', async ({ page }) => {
+  // The desktop and phone runs share one account: start from no closes.
+  await page.request.delete('/api/periods/close', { headers: await authHeader(page) }).catch(() => {});
+  await page.reload();
+  await expect(page.getByText('Outcome').first()).toBeVisible();
+
+  await page.getByRole('button', { name: 'Close books' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Close the books' });
+  await sheet.getByRole('radio', { name: /Yesterday/ }).click();
+  // Start the balances afresh: Cash has 200rb left, the rest is empty.
+  await sheet.getByText('Start balances afresh').click();
+  await sheet.getByLabel('Cash balance').fill('200000');
+  await sheet.getByRole('button', { name: /^Close / }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByText(/Books closed\. .* starts today\./)).toBeVisible();
+
+  // The new period started today: its range shows, and the one before is a step back.
+  const today = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  await expect(page.getByRole('main').getByText(`${today} - today`)).toBeVisible();
+
+  const balances = page.getByRole('main').locator('section', { has: page.getByRole('heading', { name: 'Balances' }) });
+  await expect(balances.getByRole('button', { name: /^Cash:/ })).toContainText('Rp 200.000');
+  await expect(balances.getByRole('button', { name: /^Bank:/ })).toContainText('Rp 0');
+
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await expect(page.getByText('Close undone')).toBeVisible();
+  await expect(page.getByRole('main').getByText(`${today} - today`)).toHaveCount(0);
+
+  // Clean up the balance for the other run.
+  const headers = await authHeader(page);
+  const cash = (await (await page.request.get('/api/accounts', { headers })).json()).find((a) => a.name === 'Cash');
+  await page.request.put(`/api/accounts/${cash.id}/balance`, { headers, data: { balance: 0 } });
 });

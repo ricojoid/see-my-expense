@@ -2,6 +2,7 @@ const { sql, getPool } = require('../config/db');
 const telegram = require('./telegram.service');
 const notifications = require('./notifications.service');
 const record = require('./telegram.record');
+const books = require('./telegram.books');
 const { COMMANDS, HELP, runCommand } = require('./telegram.commands');
 
 /**
@@ -63,6 +64,11 @@ async function handleMessage(msg) {
   // Replying to one of the bot's messages corrects what it recorded.
   if (msg.reply_to_message?.from?.is_bot) return record.correct(user, chatId, msg.reply_to_message.message_id, text);
 
+  if (books.isCloseRequest(text)) return books.askClose(user, chatId);
+  // "saldo gopay 150k" (no slash needed) sets a balance; plain "saldo" lists them.
+  const saldo = /^\s*(?:saldo|balance)\b\s*([\s\S]*)$/i.exec(text);
+  if (saldo) return runCommand(user, chatId, 'saldo', saldo[1].trim());
+
   const command = /^\/(\w+)(?:@\w+)?\s*([\s\S]*)$/.exec(text);
   if (command) return runCommand(user, chatId, command[1].toLowerCase(), command[2].trim());
   return record.recordMessage(user, chatId, text);
@@ -71,6 +77,7 @@ async function handleMessage(msg) {
 async function handleCallback(query) {
   const chatId = query.message?.chat?.id;
   const user = chatId && (await telegram.userForChat(chatId));
+  if (user && (await books.handleCallback(user, query))) return null;
   if (!user || !/^undo(:\d+)?$/.test(query.data || '')) return telegram.api('answerCallbackQuery', { callback_query_id: query.id });
 
   const removed = await record.undoMessage(user, chatId, query.message.message_id);

@@ -17,9 +17,15 @@ monthly budgets, recurring bills, insights and multi-user accounts.
 - **Telegram bot:** send the same sentences (several lines at once is fine), reply to the bot to
   fix one (`30k`, `kemarin`, `food`, `hapus`), ask `/spent makan bulan ini`, `/debts`, `/budi`,
   `/goals`, save with `nabung laptop 500k`, and get a PDF report every month
+- **Close the books on payday ("tutup buku"):** from the Home card or by sending `tutup buku` to the bot.
+  Choose *today* (the new period starts tomorrow) or *yesterday* (it starts today); every total, budget,
+  projection and report then runs payday to payday instead of the 1st to the 1st. Until the first close,
+  periods are calendar months. Undo is offered right after. Closing can also start the balances afresh:
+  type what's really left in each account (empty means 0); in Telegram tap *Reset to 0*, then
+  `saldo cash 200k`. Otherwise balances simply carry on.
 - **Savings goals** with how much to put aside each month
 - **Month-end projection** and **subscription detection** (offered as recurring rules)
-- **Monthly PDF report**, downloadable from Insights
+- **PDF report** per period, downloadable from Insights, and sent to Telegram when a new period starts
 - **Works offline:** the app opens without a connection, and new transactions are saved on the device
   and synced when you're back online
 - **Notifications:** a daily reminder (only if you haven't logged anything), budget alerts at 80% and
@@ -31,7 +37,10 @@ monthly budgets, recurring bills, insights and multi-user accounts.
   never netted against spending (not every income source has to be tracked)
 - **Hide amounts** with the eye button in the header (remembered per device)
 - **Edit and delete** any transaction, with **Undo** after delete
-- **Transfers** between accounts (Cash, Bank, e-wallets) with a live balance per account
+- **Balances per account** (Cash, Bank, GoPay, ...) on the home screen. Paying with GoPay lowers GoPay;
+  `isi gopay 1jt` (from the bank), `tf 500k dari bca ke gopay` or `tarik tunai 300k` moves money between
+  accounts as a transfer, which is never counted as income or spending. Set an account's real balance once
+  (tap it) and it stays in step; `/saldo` in Telegram lists them all
 - **Month switcher**, search, type and account filters, paginated activity grouped by day
 - **Insights:** spending by category, 6-month income vs expense chart (with a table view), daily average spend
 - **Debts:** track who owes you and whom you owe, per person. Lending or paying back is an expense,
@@ -143,6 +152,8 @@ E2E_ADMIN_PASSWORD=... npx playwright test     # PW_CHANNEL=chrome to use your i
 
 ## API
 
+`month` everywhere means a book period: a calendar month until the books are first closed.
+
 All routes except `POST /api/auth/login` and `GET /api/health` need `Authorization: Bearer <token>`.
 
 | Method | Route | Description |
@@ -153,6 +164,8 @@ All routes except `POST /api/auth/login` and `GET /api/health` need `Authorizati
 | GET/POST | `/api/users` | List / register users (admin) |
 | PUT | `/api/users/:id/password`, `/api/users/:id/role` | Reset password, change role (admin) |
 | DELETE | `/api/users/:id` | Delete a user and their data (admin) |
+| GET | `/api/periods?month=` | A book period's dates (`month` is its `YYYY-MM` key; omitted: the current one) |
+| POST/DELETE | `/api/periods/close` | Close the books `{ when: 'today' \| 'yesterday', balances?: { accountId: amount } }` / undo the latest close |
 | GET | `/api/transactions` | `?month&type&accountId&categoryId&personId&q&page&pageSize` |
 | GET | `/api/transactions/summary` | Month income / expense / net + total balance |
 | GET | `/api/transactions/stats` | By-category totals + 6-month trend |
@@ -162,6 +175,7 @@ All routes except `POST /api/auth/login` and `GET /api/health` need `Authorizati
 | GET/POST/PUT/DELETE | `/api/categories[/:id]` | Categories |
 | GET/POST/PUT/DELETE | `/api/accounts[/:id]` | Accounts with balances |
 | GET | `/api/budgets?month=` | Budgets with spent amounts |
+| PUT | `/api/accounts/:id/balance` | `{ balance }`: what it really holds now (moves the opening balance, adds no transaction) |
 | PUT | `/api/budgets/:categoryId` | `{ amount }`, 0 removes |
 | GET | `/api/people` | People with debt balances (positive: they owe you) |
 | PUT/DELETE | `/api/people/:id` | Rename / remove (transactions are kept) |

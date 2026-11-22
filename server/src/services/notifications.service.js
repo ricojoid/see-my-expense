@@ -1,6 +1,7 @@
 const { sql, getPool } = require('../config/db');
 const { badRequest } = require('../lib/http');
-const { shiftMonth, timeLocal, todayLocal, weekday } = require('../lib/dates');
+const { addDays, timeLocal, todayLocal, weekday } = require('../lib/dates');
+const periods = require('./periods.service');
 const { budgetCrossing, formatRupiah } = require('../lib/format');
 const push = require('./push.service');
 const telegram = require('./telegram.service');
@@ -18,6 +19,7 @@ const DEFAULTS = {
 };
 const FLAGS = ['reminderEnabled', 'budgetAlerts', 'weeklySummary', 'telegramNotify', 'monthlyReport'];
 const MONTHLY_TIME = '08:00';
+const REPORT_GRACE_DAYS = 3; // a report still goes out if the server was down when the period started
 const WEEKLY_TIME = '08:00';
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -109,7 +111,7 @@ ${telegram.escapeHtml(message.body)}`;
  */
 async function checkBudget(userId, tx, { telegramToo = true } = {}) {
   if (tx.type !== 'expense' || !tx.categoryId) return null;
-  const status = await budgets.statusFor(userId, tx.categoryId, tx.occurredOn.slice(0, 7));
+  const status = await budgets.statusFor(userId, tx.categoryId, tx.occurredOn);
   if (!status?.budget) return null;
   const level = budgetCrossing(status.spent - tx.amount, status.spent, status.budget);
   if (!level) return null;
@@ -123,7 +125,7 @@ async function checkBudget(userId, tx, { telegramToo = true } = {}) {
     message:
       level === 'over'
         ? `${status.category} is over budget by ${formatRupiah(status.spent - status.budget)}`
-        : `${status.category}: ${percent}% of this month's budget used`,
+        : `${status.category}: ${percent}% of this period's budget used`,
   };
 
   const settings = await getSettings(userId);
@@ -207,24 +209,28 @@ async function sendMonthlyReport(userId, month, username) {
   return sent;
 }
 
-/** On the 1st, last month's PDF report goes to everyone with Telegram linked (once). */
+/**
+ * When a book period starts (the 1st, or the day after "tutup buku"), the one
+ * that just ended goes as a PDF to everyone with Telegram linked, once.
+ */
 async function sendMonthlyReports(today, now) {
-  if (today.slice(8, 10) !== '01' || now < MONTHLY_TIME || !telegram.isEnabled()) return;
-  const month = shiftMonth(today.slice(0, 7), -1);
+  if (now < MONTHLY_TIME || !telegram.isEnabled()) return;
   const pool = await getPool();
-  const due = await pool
-    .request()
-    .input('month', sql.Char(7), month)
-    .query(`
-      UPDATE s SET last_report_month = @month
-      OUTPUT INSERTED.user_id AS userId
-      FROM user_settings s
-      WHERE s.monthly_report = 1 AND (s.last_report_month IS NULL OR s.last_report_month < @month)
-        AND EXISTS (SELECT 1 FROM telegram_links t WHERE t.user_id = s.user_id)
-    `);
-  for (const { userId } of due.recordset) {
-    const user = await pool.request().input('id', sql.Int, userId).query('SELECT username FROM users WHERE id = @id');
-    await sendMonthlyReport(userId, month, user.recordset[0]?.username || '');
+  const candidates = await pool.request().query(`
+    SELECT s.user_id AS userId, u.username FROM user_settings s JOIN users u ON u.id = s.user_id
+    WHERE s.monthly_report = 1 AND EXISTS (SELECT 1 FROM telegram_links t WHERE t.user_id = s.user_id)
+  `);
+  for (const { userId, username } of candidates.recordset) {
+    const current = await periods.current(userId, today);
+    if (current.start < addDays(today, -REPORT_GRACE_DAYS)) continue; // started a while ago: already handled or missed
+    const month = current.prevKey;
+    const claimed = await pool
+      .request()
+      .input('uid', sql.Int, userId)
+      .input('month', sql.Char(7), month)
+      .query(`UPDATE user_settings SET last_report_month = @month
+              WHERE user_id = @uid AND (last_report_month IS NULL OR last_report_month < @month)`);
+    if (claimed.rowsAffected[0]) await sendMonthlyReport(userId, month, username || '');
   }
 }
 

@@ -80,6 +80,10 @@ function debtLine(person) {
 }
 
 function txLine(tx) {
+  if (tx.type === 'transfer') {
+    const note = tx.description ? ` · ${html(tx.description)}` : '';
+    return `<b>↔️ ${formatRupiah(tx.amount)}</b> · ${html(tx.account)} → ${html(tx.toAccount)} · ${dayLabel(tx.occurredOn)}${note}`;
+  }
   const sign = tx.type === 'income' ? '+' : '−';
   const what = tx.personId ? `${tx.type === 'expense' ? 'To' : 'From'} ${tx.person}` : tx.category;
   const note = tx.description ? ` · ${html(tx.description)}` : '';
@@ -122,12 +126,34 @@ async function saveTowardsGoal(user, line, ctx) {
   };
 }
 
-/** Records one line. Returns { lines, txIds, newPerson } or { error }. */
+/** "Bank BCA Rp 4.000.000 · GoPay Rp 970.000": the accounts a message touched. */
+function balancesLine(accs, ids) {
+  const touched = accs.filter((a) => ids.has(a.id));
+  return touched.length ? `💳 ${touched.map((a) => `${html(a.name)} ${formatRupiah(a.balance)}`).join(' · ')}` : '';
+}
+
+/** "isi gopay 1jt": money moved between the user's own accounts. */
+async function recordTransfer(user, line, parsed, ctx) {
+  const { value, error } = validateTransaction({
+    type: 'transfer',
+    amount: parsed.amount,
+    occurredOn: parsed.occurredOn || ctx.parserContext.today,
+    accountId: parsed.accountId,
+    toAccountId: parsed.toAccountId,
+    description: parsed.description || null,
+  });
+  if (error) return { error: `Couldn't save "${html(line.trim())}": ${html(error)}.` };
+  const tx = await transactions.create(user.id, value);
+  return { lines: [`✅ ${txLine(tx)}`], txIds: [tx.id], accountIds: [tx.accountId, tx.toAccountId] };
+}
+
+/** Records one line. Returns { lines, txIds, accountIds, newPerson } or { error }. */
 async function recordLine(user, line, ctx) {
   if (SAVE_RE.test(line)) return saveTowardsGoal(user, line, ctx);
 
   const parsed = await parseQuick(line, ctx.parserContext);
   if (!parsed.amount) return { error: `No amount in "${html(line.trim())}". Try <code>kopi 25k</code>.` };
+  if (parsed.type === 'transfer') return recordTransfer(user, line, parsed, ctx);
 
   const category = parsed.debt ? null : ctx.cats.find((c) => c.id === parsed.categoryId) || fallbackCategory(ctx.cats, parsed.type);
   const account = await defaultAccount(user.id, ctx.accs, parsed.accountId);
@@ -154,7 +180,7 @@ async function recordLine(user, line, ctx) {
     ];
     const alert = await notifications.checkBudget(user.id, mine, { telegramToo: false }).catch(() => null);
     if (alert) lines.push(`${alert.level === 'over' ? '🚨' : '⚠️'} ${html(alert.message)}`);
-    return { lines, txIds: result.transactions.map((t) => t.id), newPerson: true };
+    return { lines, txIds: result.transactions.map((t) => t.id), accountIds: [mine.accountId], newPerson: true };
   }
 
   const tx = await transactions.create(user.id, value);
@@ -166,7 +192,7 @@ async function recordLine(user, line, ctx) {
   }
   const alert = await notifications.checkBudget(user.id, tx, { telegramToo: false }).catch(() => null);
   if (alert) lines.push(`${alert.level === 'over' ? '🚨' : '⚠️'} ${html(alert.message)}`);
-  return { lines, txIds: [tx.id], newPerson: Boolean(parsed.personName || parsed.split) };
+  return { lines, txIds: [tx.id], accountIds: [tx.accountId], newPerson: Boolean(parsed.personName || parsed.split) };
 }
 
 /** A message: one transaction per line, one reply for all of them. */
@@ -177,6 +203,7 @@ async function recordMessage(user, chatId, text) {
   let ctx = await loadContext(user.id);
   const out = [];
   const txIds = [];
+  const accountIds = new Set();
   for (const line of lines) {
     try {
       const result = await recordLine(user, line, ctx);
@@ -184,6 +211,7 @@ async function recordMessage(user, chatId, text) {
       else {
         out.push(...result.lines);
         txIds.push(...result.txIds);
+        for (const id of result.accountIds || []) accountIds.add(id);
         if (result.newPerson) ctx = await loadContext(user.id); // the next line may name them again
       }
     } catch (err) {
@@ -191,6 +219,9 @@ async function recordMessage(user, chatId, text) {
     }
   }
   if (lines.length > 1 && txIds.length) out.unshift(`Saved ${txIds.length} of ${lines.length}:`);
+  // What's left in the accounts used, so "makan 30k gopay" shows GoPay going down.
+  const balances = accountIds.size ? balancesLine(await accounts.list(user.id), accountIds) : '';
+  if (balances) out.push(balances);
   return replyAbout(chatId, out.join('\n'), txIds);
 }
 

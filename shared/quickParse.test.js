@@ -186,3 +186,22 @@ test('matchCategory finds a category without falling back', async () => {
   assert.equal(matchCategory('makan', categories.filter((c) => c.type === 'expense')).id, 1);
   assert.equal(matchCategory('blah', categories.filter((c) => c.type === 'expense')), null);
 });
+
+test('transfers between your own accounts', () => {
+  const topUp = parse('isi gopay 1jt');
+  assert.deepEqual([topUp.type, topUp.amount, topUp.accountId, topUp.toAccountId, topUp.description], ['transfer', 1000000, 12, 11, 'Top up GoPay']);
+  assert.equal(topUp.categoryId, undefined);
+  assert.deepEqual(moved(parse('Top up GoPay 200k dari cash')), ['transfer', 200000, 10, 11]);
+  assert.deepEqual(moved(parse('tf 500k dari bca ke gopay')), ['transfer', 500000, 12, 11]);
+  assert.deepEqual(moved(parse('transfer ke cash 300rb')), ['transfer', 300000, 12, 10]);
+  assert.deepEqual(moved(parse('tarik tunai 300k')), ['transfer', 300000, 12, 10]);
+  assert.equal(parse('isi gopay 1jt kemarin').occurredOn, '2026-11-21');
+  // Not an account: still spending.
+  assert.equal(parse('isi bensin 50k').type, 'expense');
+  assert.equal(parse('top up diamond 50k').type, 'expense');
+  assert.equal(parse('kirim ke budi 50k').type, 'expense');
+  // Paying with GoPay takes it from GoPay.
+  assert.deepEqual(moved(parse('bayar makan 30k pake gopay')).slice(0, 3), ['expense', 30000, 11]);
+});
+
+const moved = (r) => [r.type, r.amount, r.accountId, r.toAccountId];

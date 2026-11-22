@@ -1,11 +1,11 @@
 const { sql, getPool } = require('../config/db');
 const { badRequest, notFound } = require('../lib/http');
-const { monthRange } = require('../lib/dates');
+const periods = require('./periods.service');
 const { validateAmount } = require('../lib/validate');
 
 /** Every expense category with its monthly budget (null if unset) and what was spent in `month`. */
 async function listForMonth(userId, month) {
-  const { start, end } = monthRange(month);
+  const { start, end } = await periods.range(userId, month);
   const pool = await getPool();
   const result = await pool
     .request()
@@ -29,9 +29,9 @@ async function listForMonth(userId, month) {
   }));
 }
 
-/** One category's budget (null if unset) and what was spent on it in `month`. */
-async function statusFor(userId, categoryId, month) {
-  const { start, end } = monthRange(month);
+/** One category's budget (null if unset) and what was spent on it in the period holding `date`. */
+async function statusFor(userId, categoryId, date) {
+  const { start, end } = await periods.rangeAt(userId, date);
   const pool = await getPool();
   const r = await pool
     .request()

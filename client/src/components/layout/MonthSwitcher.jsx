@@ -1,18 +1,23 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { useRef } from 'react';
 import { useData } from '../../context/DataContext';
-import { currentMonth, formatMonth, shiftMonth } from '../../lib/dates';
+import { formatMonth, formatPeriodRange, shiftMonth } from '../../lib/dates';
 import Icon from '../ui/Icon';
 
-/** ‹ November 2026 › with swipe-style animation. Arrows instead of a dropdown. */
+/**
+ * ‹ November 2026 › with swipe-style animation. Moves between book periods
+ * (payday to payday once the books have been closed), never into the future.
+ */
 export default function MonthSwitcher({ className = '' }) {
-  const { month, setMonth } = useData();
+  const { month, setMonth, period, currentKey } = useData();
   const direction = useRef(0);
-  const isCurrent = month === currentMonth();
+  const isCurrent = month === currentKey;
+  const prevKey = period?.prevKey ?? shiftMonth(month, -1);
+  const nextKey = period ? period.nextKey : null;
 
   const go = (delta) => {
     direction.current = delta;
-    setMonth(shiftMonth(month, delta));
+    setMonth(delta < 0 ? prevKey : nextKey);
   };
 
   return (
@@ -22,11 +27,12 @@ export default function MonthSwitcher({ className = '' }) {
       </button>
       <button
         onClick={() => {
-          direction.current = month < currentMonth() ? 1 : -1;
-          setMonth(currentMonth());
+          if (!currentKey) return;
+          direction.current = month < currentKey ? 1 : -1;
+          setMonth(currentKey);
         }}
         className="relative h-9 min-w-[132px] overflow-hidden rounded-xl px-2 text-sm font-bold"
-        title="Jump to this month"
+        title={period?.booked ? `${formatPeriodRange(period)} · jump to the current period` : 'Jump to the current period'}
       >
         <AnimatePresence mode="popLayout" initial={false} custom={direction.current}>
           <motion.span
@@ -44,7 +50,7 @@ export default function MonthSwitcher({ className = '' }) {
       </button>
       <button
         onClick={() => go(1)}
-        disabled={isCurrent}
+        disabled={isCurrent || !nextKey}
         className="grid h-9 w-9 place-items-center rounded-xl text-ink-2 hover:bg-white/5 hover:text-ink disabled:opacity-30 disabled:hover:bg-transparent"
         aria-label="Next month"
       >

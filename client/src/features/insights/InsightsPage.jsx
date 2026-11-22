@@ -1,10 +1,9 @@
 import { useState } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { budgetsApi, insightsApi, transactionsApi } from '../../api';
 import { useData } from '../../context/DataContext';
 import { useMoney } from '../../context/PrivacyContext';
 import { useFetch } from '../../hooks/useFetch';
-import { daysElapsed } from '../../lib/dates';
 import PageHeader from '../../components/layout/PageHeader';
 import MonthSwitcher from '../../components/layout/MonthSwitcher';
 import Card from '../../components/ui/Card';
@@ -34,7 +33,7 @@ function Tile({ label, value, hint, valueClass = '', delay }) {
 }
 
 export default function InsightsPage({ onNavigate }) {
-  const { month, version } = useData();
+  const { month, period, version } = useData();
   const money = useMoney();
   const toast = useToast();
   const [downloading, setDownloading] = useState(false);
@@ -56,7 +55,7 @@ export default function InsightsPage({ onNavigate }) {
 
   const rows = stats.data ? (breakdown === 'expense' ? stats.data.expenseByCategory : stats.data.incomeByCategory) : null;
   const s = summary.data;
-  const days = daysElapsed(month);
+  const days = period?.daysElapsed ?? 0;
   const topExpense = stats.data?.expenseByCategory[0];
 
   return (
@@ -102,11 +101,9 @@ export default function InsightsPage({ onNavigate }) {
           ) : rows.length === 0 ? (
             <EmptyState title="No data for this month" message={`No ${breakdown === 'expense' ? 'spending' : 'income'} recorded yet.`} />
           ) : (
-            <AnimatePresence mode="wait">
-              <motion.div key={breakdown} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                <CategoryBars rows={rows} type={breakdown} onSelect={(row) => onNavigate('activity', row)} />
-              </motion.div>
-            </AnimatePresence>
+            <motion.div key={breakdown} initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+              <CategoryBars rows={rows} type={breakdown} onSelect={(row) => onNavigate('activity', row)} />
+            </motion.div>
           )}
         </Card>
 

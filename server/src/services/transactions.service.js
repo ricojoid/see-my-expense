@@ -1,11 +1,12 @@
 const { sql, getPool, withTransaction } = require('../config/db');
 const { badRequest, notFound } = require('../lib/http');
-const { lastWeek, monthRange, shiftMonth, todayLocal } = require('../lib/dates');
+const { lastWeek, todayLocal } = require('../lib/dates');
 const { percentChange } = require('../lib/format');
 const { parseCsv, toCsv, mapImportRows } = require('../lib/csv');
 const { TX_TYPES, toId } = require('../lib/validate');
 const { assertTransactionRefs } = require('./ownership.service');
 const { resolveDebt } = require('./people.service');
+const periods = require('./periods.service');
 
 const SELECT_TX = `
   SELECT t.id, t.type, t.amount, t.description,
@@ -25,13 +26,13 @@ const SELECT_TX = `
 const toTx = (row) => ({ ...row, amount: Number(row.amount) });
 const escapeLike = (s) => s.replace(/[\\%_[]/g, (ch) => `\\${ch}`);
 
-/** Builds the WHERE clause shared by list and export. */
-function buildFilters(request, userId, filters) {
+/** Builds the WHERE clause shared by list and export; `range` is the chosen period's dates, if any. */
+function buildFilters(request, userId, filters, range) {
   const where = ['t.user_id = @uid'];
   request.input('uid', sql.Int, userId);
 
-  if (filters.month) {
-    const { start, end } = monthRange(filters.month);
+  if (range) {
+    const { start, end } = range;
     where.push('t.occurred_on >= CAST(@start AS date) AND t.occurred_on < CAST(@end AS date)');
     request.input('start', sql.VarChar(10), start).input('end', sql.VarChar(10), end);
   }
@@ -68,9 +69,10 @@ async function list(userId, filters) {
   const pageSize = Math.min(Math.max(Number(filters.pageSize) || 20, 1), 100);
   const page = Math.max(Number(filters.page) || 1, 1);
 
+  const range = filters.month ? await periods.range(userId, filters.month) : null;
   const pool = await getPool();
   const request = pool.request();
-  const where = buildFilters(request, userId, filters);
+  const where = buildFilters(request, userId, filters, range);
   request.input('offset', sql.Int, (page - 1) * pageSize).input('limit', sql.Int, pageSize);
 
   const result = await request.query(`
@@ -95,9 +97,9 @@ async function list(userId, filters) {
   };
 }
 
-/** Income / expense / net for the month, plus the all-time balance across accounts. */
+/** Income / expense / net for the period, plus the all-time balance across accounts. */
 async function summary(userId, month) {
-  const { start, end } = monthRange(month);
+  const { start, end } = await periods.range(userId, month);
   const pool = await getPool();
   const result = await pool
     .request()
@@ -108,7 +110,8 @@ async function summary(userId, month) {
       SELECT
         ISNULL(SUM(CASE WHEN type = 'income'  AND occurred_on >= CAST(@start AS date) AND occurred_on < CAST(@end AS date) THEN amount END), 0) AS income,
         ISNULL(SUM(CASE WHEN type = 'expense' AND occurred_on >= CAST(@start AS date) AND occurred_on < CAST(@end AS date) THEN amount END), 0) AS expense,
-        ISNULL(SUM(CASE type WHEN 'income' THEN amount WHEN 'expense' THEN -amount ELSE 0 END), 0) AS balance
+        ISNULL(SUM(CASE type WHEN 'income' THEN amount WHEN 'expense' THEN -amount ELSE 0 END), 0)
+          + (SELECT ISNULL(SUM(opening_balance), 0) FROM accounts WHERE user_id = @uid) AS balance
       FROM transactions
       WHERE user_id = @uid
     `);
@@ -118,18 +121,21 @@ async function summary(userId, month) {
   return { month, income, expense, net: income - expense, balance: Number(row.balance) };
 }
 
-/** Spending by category for `month`, and a 6-month income/expense trend ending at it. */
+/** Spending by category for the period, and an income/expense trend over the periods ending at it. */
 async function stats(userId, month, trendMonths = 6) {
-  const { start, end } = monthRange(month);
-  const trendStart = monthRange(shiftMonth(month, -(trendMonths - 1))).start;
+  const history = await periods.history(userId, month, trendMonths);
+  const { start, end } = history[history.length - 1];
   const pool = await getPool();
-  const result = await pool
+  const request = pool
     .request()
     .input('uid', sql.Int, userId)
     .input('start', sql.VarChar(10), start)
-    .input('end', sql.VarChar(10), end)
-    .input('trendStart', sql.VarChar(10), trendStart)
-    .query(`
+    .input('end', sql.VarChar(10), end);
+  history.forEach((p, i) => {
+    request.input(`k${i}`, sql.Char(7), p.key).input(`s${i}`, sql.VarChar(10), p.start).input(`e${i}`, sql.VarChar(10), p.end);
+  });
+  const buckets = history.map((_, i) => `(@k${i}, @s${i}, @e${i})`).join(', ');
+  const result = await request.query(`
       SELECT c.id AS categoryId, c.name AS category, t.type, SUM(t.amount) AS total
       FROM transactions t
       JOIN categories c ON c.id = t.category_id
@@ -137,19 +143,15 @@ async function stats(userId, month, trendMonths = 6) {
       GROUP BY c.id, c.name, t.type
       ORDER BY total DESC;
 
-      SELECT CONVERT(char(7), occurred_on, 126) AS month, type, SUM(amount) AS total
-      FROM transactions
-      WHERE user_id = @uid AND type <> 'transfer'
-        AND occurred_on >= CAST(@trendStart AS date) AND occurred_on < CAST(@end AS date)
-      GROUP BY CONVERT(char(7), occurred_on, 126), type;
+      SELECT b.k AS month, t.type, SUM(t.amount) AS total
+      FROM (VALUES ${buckets}) AS b(k, s, e)
+      JOIN transactions t ON t.user_id = @uid AND t.type <> 'transfer'
+        AND t.occurred_on >= CAST(b.s AS date) AND t.occurred_on < CAST(b.e AS date)
+      GROUP BY b.k, t.type;
     `);
 
   const [byCategory, trendRows] = result.recordsets;
-  const trend = Array.from({ length: trendMonths }, (_, i) => ({
-    month: shiftMonth(month, i - (trendMonths - 1)),
-    income: 0,
-    expense: 0,
-  }));
+  const trend = history.map((p) => ({ month: p.key, income: 0, expense: 0 }));
   for (const row of trendRows) {
     const bucket = trend.find((b) => b.month === row.month);
     if (bucket) bucket[row.type] = Number(row.total);
@@ -358,9 +360,10 @@ async function remove(userId, id) {
 const CSV_HEADER = ['date', 'type', 'category', 'amount', 'description', 'account', 'to_account'];
 
 async function exportCsv(userId, filters) {
+  const range = filters.month ? await periods.range(userId, filters.month) : null;
   const pool = await getPool();
   const request = pool.request();
-  const where = buildFilters(request, userId, filters);
+  const where = buildFilters(request, userId, filters, range);
   const result = await request.query(`${SELECT_TX} ${where} ORDER BY t.occurred_on, t.id`);
   const rows = result.recordset.map((t) => [
     t.occurredOn,

@@ -65,4 +65,10 @@ export async function removePerson(page, name) {
   await expect(page.getByRole('dialog')).toHaveCount(0);
 }
 
+/** The signed-in user's API header, read from the app's stored token. */
+export async function authHeader(page) {
+  const token = await page.evaluate(() => Object.entries(localStorage).find(([k]) => /token/i.test(k))?.[1]);
+  return { Authorization: `Bearer ${String(token).replace(/^"|"$/g, '')}` };
+}
+
 export { expect };
