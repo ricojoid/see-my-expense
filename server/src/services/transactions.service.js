@@ -206,6 +206,35 @@ async function weeklyRecap(userId, today = todayLocal()) {
   };
 }
 
+/** Spent and earned in [start, end), kept apart, plus the number of expenses. */
+async function totalsBetween(userId, start, end) {
+  const pool = await getPool();
+  const r = await pool
+    .request()
+    .input('uid', sql.Int, userId)
+    .input('start', sql.VarChar(10), start)
+    .input('end', sql.VarChar(10), end)
+    .query(`
+      SELECT ISNULL(SUM(CASE WHEN type = 'expense' THEN amount END), 0) AS expense,
+             ISNULL(SUM(CASE WHEN type = 'income' THEN amount END), 0) AS income,
+             COUNT(CASE WHEN type = 'expense' THEN 1 END) AS expenseCount
+      FROM transactions
+      WHERE user_id = @uid AND occurred_on >= CAST(@start AS date) AND occurred_on < CAST(@end AS date)
+    `);
+  const row = r.recordset[0];
+  return { expense: Number(row.expense), income: Number(row.income), expenseCount: row.expenseCount };
+}
+
+/** The account the user paid with most recently (a sensible default), or null. */
+async function lastAccountId(userId) {
+  const pool = await getPool();
+  const r = await pool
+    .request()
+    .input('uid', sql.Int, userId)
+    .query('SELECT TOP 1 account_id AS id FROM transactions WHERE user_id = @uid ORDER BY created_at DESC, id DESC');
+  return r.recordset[0]?.id ?? null;
+}
+
 async function countOn(userId, date) {
   const pool = await getPool();
   const r = await pool
@@ -367,4 +396,4 @@ async function importCsv(userId, text) {
   });
 }
 
-module.exports = { list, summary, stats, weeklyRecap, countOn, findById, create, update, remove, exportCsv, importCsv };
+module.exports = { list, summary, stats, weeklyRecap, totalsBetween, lastAccountId, countOn, findById, create, update, remove, exportCsv, importCsv };

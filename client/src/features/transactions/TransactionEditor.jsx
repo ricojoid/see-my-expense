@@ -9,7 +9,7 @@ import { accountIcon, categoryIcon } from '../../lib/categoryIcon';
 import { today } from '../../lib/dates';
 import { formatCurrency } from '../../lib/format';
 import { enqueue } from '../../lib/outbox';
-import { parseQuick } from '../../lib/quickParse';
+import { parseQuick } from '@shared/quickParse.js';
 import Sheet from '../../components/ui/Sheet';
 import Segmented from '../../components/ui/Segmented';
 import Chip from '../../components/ui/Chip';
@@ -172,9 +172,12 @@ export default function TransactionEditor() {
     const parsed = parseQuick(text, {
       categories: categories.filter((c) => c.name !== DEBT_CATEGORY),
       accounts,
+      people,
       today: today(),
     });
-    setForm({ ...quickBase.current, debt: false, repeat: false, ...parsed });
+    // "ngutangin budi 50rb" switches the form to a debt with that person.
+    const person = parsed.debt ? { personId: parsed.personId ?? null, personName: parsed.personName ?? '' } : {};
+    setForm({ ...quickBase.current, debt: false, repeat: false, ...parsed, ...person });
   };
 
   const set = (patch) => {

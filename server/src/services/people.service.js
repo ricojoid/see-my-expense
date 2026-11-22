@@ -73,7 +73,7 @@ async function findOrCreateByName(newRequest, userId, name) {
   const found = await newRequest()
     .input('uid', sql.Int, userId)
     .input('name', sql.NVarChar(50), name)
-    .query('SELECT id FROM people WHERE user_id = @uid AND name = @name');
+    .query('SELECT id FROM people WHERE user_id = @uid AND LOWER(name) = LOWER(@name)'); // "budi" finds "Budi"
   if (found.recordset[0]) return found.recordset[0].id;
   const created = await newRequest()
     .input('uid', sql.Int, userId)

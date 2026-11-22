@@ -322,10 +322,39 @@ async function ensureNotifications(h) {
         budget_alerts BIT NOT NULL DEFAULT 1,
         weekly_summary BIT NOT NULL DEFAULT 1,
         last_reminder_on DATE NULL,
-        last_weekly_on DATE NULL
+        last_weekly_on DATE NULL,
+        telegram_notify BIT NOT NULL DEFAULT 1
       );
     `);
     log('created table user_settings');
+  }
+  if (!(await h.columnExists('user_settings', 'telegram_notify'))) {
+    await h.q('ALTER TABLE user_settings ADD telegram_notify BIT NOT NULL CONSTRAINT DF_user_settings_telegram DEFAULT 1;');
+  }
+}
+
+/** Telegram chats linked to accounts, and the one-time codes that link them. */
+async function ensureTelegram(h) {
+  if (!(await h.tableExists('telegram_links'))) {
+    await h.q(`
+      CREATE TABLE telegram_links (
+        chat_id BIGINT NOT NULL PRIMARY KEY,
+        user_id INT NOT NULL CONSTRAINT FK_telegram_links_user REFERENCES users(id),
+        chat_name NVARCHAR(100) NULL,
+        linked_at DATETIME2 NOT NULL DEFAULT SYSDATETIME()
+      );
+    `);
+    log('created table telegram_links');
+  }
+  if (!(await h.tableExists('telegram_link_codes'))) {
+    await h.q(`
+      CREATE TABLE telegram_link_codes (
+        code VARCHAR(32) NOT NULL PRIMARY KEY,
+        user_id INT NOT NULL CONSTRAINT FK_telegram_codes_user REFERENCES users(id),
+        expires_at DATETIME2 NOT NULL
+      );
+    `);
+    log('created table telegram_link_codes');
   }
 }
 
@@ -344,6 +373,7 @@ async function main() {
     await ensureTransactions(h, adminId);
     await ensureBudgets(h);
     await ensureNotifications(h);
+    await ensureTelegram(h);
 
     const cats = await h.q(`SELECT COUNT(*) AS n FROM categories WHERE user_id = ${adminId}`);
     if (cats.recordset[0].n === 0) {

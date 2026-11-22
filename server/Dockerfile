@@ -1,4 +1,5 @@
 # ---- API: Express + SQL Server (SQL authentication via tedious) ----
+# Build context: the repository root (see docker-compose.yml), so ../shared is available.
 FROM node:20-alpine
 
 ENV NODE_ENV=production \
@@ -6,14 +7,15 @@ ENV NODE_ENV=production \
 
 RUN apk add --no-cache tzdata
 
-WORKDIR /app
+WORKDIR /app/server
 
 # msnodesqlv8 (Windows auth) is optional and not needed in Linux containers.
-COPY package.json package-lock.json ./
+COPY server/package.json server/package-lock.json ./
 RUN npm ci --omit=dev --omit=optional && npm cache clean --force
 
-COPY src ./src
-COPY db ./db
+COPY shared/ /app/shared/
+COPY server/src ./src
+COPY server/db ./db
 
 USER node
 EXPOSE 4000

@@ -15,6 +15,8 @@ const USER_OWNED_TABLES = [
   'people',
   'push_subscriptions',
   'user_settings',
+  'telegram_links',
+  'telegram_link_codes',
 ];
 
 async function list() {

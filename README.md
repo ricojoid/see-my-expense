@@ -9,7 +9,10 @@ monthly budgets, recurring bills, insights and multi-user accounts.
 
 ## Features
 
-- **Quick entry:** type `kopi 25k gopay kemarin` and the amount, category, account and date fill in
+- **Quick entry:** type `kopi 25k gopay kemarin` or `10 november lupa bayar makan 35k` and the amount,
+  category, account and date fill in. Debts too: `ngutangin budi 50rb`, `budi udah balikin 20rb`
+- **Telegram bot:** send the same sentences to your bot and they're recorded, with Undo, `/today`,
+  `/week`, `/month`, and reminders / alerts in the chat
 - **Works offline:** the app opens without a connection, and new transactions are saved on the device
   and synced when you're back online
 - **Notifications:** a daily reminder (only if you haven't logged anything), budget alerts at 80% and
@@ -57,7 +60,8 @@ client/
     components/layout/   app shell, navigation, month switcher
     components/charts/   trend chart, category bars
     features/            one folder per screen (home, activity, debts, insights, settings, auth, transactions)
-docker-compose.yml       SQL Server + API + web
+shared/                  pure code used by both (quick-entry parser + tests)
+docker-compose.yml       API + web (an optional SQL Server in docker-compose.db.yml)
 ```
 
 ## Run with Docker (server deployment)
@@ -82,6 +86,14 @@ reaches one published on the Docker host (for example a `mssql/server` container
 (`sa` has it). No SQL Server yet? Uncomment `COMPOSE_FILE=docker-compose.yml:docker-compose.db.yml`
 in `.env` and set `DB_SERVER=db`: compose then runs one too (x86-64 host, about 2 GB of RAM,
 data in the `mssql-data` volume).
+
+### Telegram bot
+
+1. Create a bot with [@BotFather](https://t.me/BotFather) (`/newbot`) and copy its token.
+2. In the server's `.env`: `TELEGRAM_BOT_TOKEN=...` and `APP_URL=https://your-domain` (for the "Open app" button).
+3. `docker compose up -d`, then in the app open **Settings → Telegram → Connect Telegram** and tap Start in Telegram.
+
+Only one process may run a bot token at a time: don't put the same token in a local `server/.env`.
 
 ## Run locally (Windows, SQL Server Express)
 
@@ -112,8 +124,8 @@ See [ROADMAP.md](ROADMAP.md) for ideas not built yet.
 ## Tests
 
 ```bash
-cd server && npm test
-cd client && npm test
+cd server && npm test        # API helpers
+cd client && npm test        # quick-entry parser (shared/)
 ```
 
 ## API

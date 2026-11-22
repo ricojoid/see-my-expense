@@ -10,6 +10,7 @@ import RecurringSection from './RecurringSection';
 import PasswordSection from './PasswordSection';
 import NotificationsSection from './NotificationsSection';
 import AppLockSection from './AppLockSection';
+import TelegramSection from './TelegramSection';
 import UsersSection from './UsersSection';
 
 const SECTIONS = [
@@ -18,6 +19,7 @@ const SECTIONS = [
   { key: 'budgets', label: 'Budgets', hint: 'Monthly spending limits', icon: 'target', Component: BudgetsSection },
   { key: 'recurring', label: 'Recurring', hint: 'Bills and salary on autopilot', icon: 'repeat', Component: RecurringSection },
   { key: 'notifications', label: 'Notifications', hint: 'Reminders, budget alerts, weekly summary', icon: 'bell', Component: NotificationsSection },
+  { key: 'telegram', label: 'Telegram', hint: 'Record by chatting with a bot', icon: 'send', Component: TelegramSection },
   { key: 'lock', label: 'App lock', hint: 'PIN or fingerprint on this device', icon: 'lock', Component: AppLockSection },
   { key: 'password', label: 'Password', hint: 'Change your password', icon: 'key', Component: PasswordSection },
   { key: 'users', label: 'Users', hint: 'Register and manage accounts', icon: 'users', Component: UsersSection, adminOnly: true },

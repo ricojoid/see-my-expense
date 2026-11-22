@@ -1,0 +1,10 @@
+# Build context is the repository root for both images.
+.git
+**/node_modules
+**/dist
+**/npm-debug.log
+**/.env
+**/.env.*
+!**/.env.example
+server/test
+*.md

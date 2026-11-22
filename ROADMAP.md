@@ -24,5 +24,6 @@ Ideas for later, in rough order of impact.
   with a tested restore procedure.
 
 ## Done
-- Quick entry ("kopi 25k gopay kemarin"), offline saving with sync, daily reminder,
-  budget alerts, weekly summary, app lock (PIN / fingerprint), upcoming bills.
+- Quick entry ("kopi 25k gopay kemarin", "10 november ...", debts like "ngutangin budi 50rb"),
+  Telegram bot, offline saving with sync, daily reminder, budget alerts, weekly summary,
+  app lock (PIN / fingerprint), upcoming bills.

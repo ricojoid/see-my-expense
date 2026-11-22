@@ -13,6 +13,7 @@ router.use('/budgets', requireAuth, require('./budgets.routes'));
 router.use('/recurring', requireAuth, require('./recurring.routes'));
 router.use('/people', requireAuth, require('./people.routes'));
 router.use('/notifications', requireAuth, require('./notifications.routes'));
+router.use('/telegram', requireAuth, require('./telegram.routes'));
 router.use('/transactions', requireAuth, require('./transactions.routes'));
 
 module.exports = router;

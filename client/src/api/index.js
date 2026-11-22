@@ -57,6 +57,12 @@ export const notificationsApi = {
   test: () => http.post('/notifications/test'),
 };
 
+export const telegramApi = {
+  status: () => http.get('/telegram'),
+  link: () => http.post('/telegram/link'),
+  unlink: () => http.del('/telegram/link'),
+};
+
 export const budgetsApi = {
   list: (month) => http.get('/budgets', { month }),
   set: (categoryId, amount) => http.put(`/budgets/${categoryId}`, { amount }),

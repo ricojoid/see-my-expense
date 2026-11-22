@@ -3,10 +3,12 @@ const { badRequest } = require('../lib/http');
 const { timeLocal, todayLocal, weekday } = require('../lib/dates');
 const { budgetCrossing, formatRupiah } = require('../lib/format');
 const push = require('./push.service');
+const telegram = require('./telegram.service');
 const budgets = require('./budgets.service');
 const transactions = require('./transactions.service');
 
-const DEFAULTS = { reminderEnabled: false, reminderTime: '21:00', budgetAlerts: true, weeklySummary: true };
+const DEFAULTS = { reminderEnabled: false, reminderTime: '21:00', budgetAlerts: true, weeklySummary: true, telegramNotify: true };
+const FLAGS = ['reminderEnabled', 'budgetAlerts', 'weeklySummary', 'telegramNotify'];
 const WEEKLY_TIME = '08:00';
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -16,22 +18,20 @@ async function getSettings(userId) {
   const pool = await getPool();
   const r = await pool.request().input('uid', sql.Int, userId).query(`
     SELECT CAST(reminder_enabled AS bit) AS reminderEnabled, reminder_time AS reminderTime,
-           CAST(budget_alerts AS bit) AS budgetAlerts, CAST(weekly_summary AS bit) AS weeklySummary
+           CAST(budget_alerts AS bit) AS budgetAlerts, CAST(weekly_summary AS bit) AS weeklySummary,
+           CAST(telegram_notify AS bit) AS telegramNotify
     FROM user_settings WHERE user_id = @uid
   `);
   const row = r.recordset[0];
   if (!row) return { ...DEFAULTS };
-  return {
-    reminderEnabled: Boolean(row.reminderEnabled),
-    reminderTime: row.reminderTime,
-    budgetAlerts: Boolean(row.budgetAlerts),
-    weeklySummary: Boolean(row.weeklySummary),
-  };
+  const settings = { reminderTime: row.reminderTime };
+  for (const key of FLAGS) settings[key] = Boolean(row[key]);
+  return settings;
 }
 
 function parseSettings(body, current) {
   const next = { ...current };
-  for (const key of ['reminderEnabled', 'budgetAlerts', 'weeklySummary']) {
+  for (const key of FLAGS) {
     if (body[key] !== undefined) {
       if (typeof body[key] !== 'boolean') throw badRequest(`${key} must be true or false`);
       next[key] = body[key];
@@ -57,14 +57,15 @@ async function updateSettings(userId, body = {}) {
     .input('time', sql.Char(5), next.reminderTime)
     .input('budget', sql.Bit, next.budgetAlerts)
     .input('weekly', sql.Bit, next.weeklySummary)
+    .input('telegram', sql.Bit, next.telegramNotify)
     .input('skip', sql.VarChar(10), skipToday ? today : null)
     .query(`
       MERGE user_settings AS target
       USING (SELECT @uid AS user_id) AS src ON target.user_id = src.user_id
       WHEN MATCHED THEN UPDATE SET reminder_enabled = @enabled, reminder_time = @time, budget_alerts = @budget,
-        weekly_summary = @weekly, last_reminder_on = COALESCE(CAST(@skip AS date), last_reminder_on)
-      WHEN NOT MATCHED THEN INSERT (user_id, reminder_enabled, reminder_time, budget_alerts, weekly_summary, last_reminder_on)
-        VALUES (@uid, @enabled, @time, @budget, @weekly, CAST(@skip AS date));
+        weekly_summary = @weekly, telegram_notify = @telegram, last_reminder_on = COALESCE(CAST(@skip AS date), last_reminder_on)
+      WHEN NOT MATCHED THEN INSERT (user_id, reminder_enabled, reminder_time, budget_alerts, weekly_summary, telegram_notify, last_reminder_on)
+        VALUES (@uid, @enabled, @time, @budget, @weekly, @telegram, CAST(@skip AS date));
     `);
   return next;
 }
@@ -79,11 +80,23 @@ async function ensureSettings(userId) {
 }
 
 /**
- * After an expense is saved: did it push its category past 80% or 100% of the
- * monthly budget? Returns the alert for the app to show, and pushes it to the
- * user's other devices too when budget alerts are on.
+ * Delivers a notification on every channel the user has: push on their devices,
+ * and their linked Telegram chats (unless they turned that off, or it came from Telegram).
  */
-async function checkBudget(userId, tx) {
+async function deliver(userId, message, { telegramToo = true } = {}) {
+  const sent = await push.sendToUser(userId, message);
+  if (!telegramToo || !telegram.isEnabled() || !(await getSettings(userId)).telegramNotify) return sent;
+  const text = `<b>${telegram.escapeHtml(message.title)}</b>
+${telegram.escapeHtml(message.body)}`;
+  return sent + (await telegram.sendToUser(userId, text));
+}
+
+/**
+ * After an expense is saved: did it push its category past 80% or 100% of the
+ * monthly budget? Returns the alert for the caller to show, and sends it to the
+ * user's other channels too when budget alerts are on.
+ */
+async function checkBudget(userId, tx, { telegramToo = true } = {}) {
   if (tx.type !== 'expense' || !tx.categoryId) return null;
   const status = await budgets.statusFor(userId, tx.categoryId, tx.occurredOn.slice(0, 7));
   if (!status?.budget) return null;
@@ -104,9 +117,8 @@ async function checkBudget(userId, tx) {
 
   const settings = await getSettings(userId);
   if (settings.budgetAlerts) {
-    push
-      .sendToUser(userId, { title: level === 'over' ? 'Over budget' : 'Budget almost used', body: alert.message, url: '/', tag: `budget-${tx.categoryId}` })
-      .catch((err) => log(`budget alert failed: ${err.message}`));
+    const message = { title: level === 'over' ? 'Over budget' : 'Budget almost used', body: alert.message, url: '/', tag: `budget-${tx.categoryId}` };
+    deliver(userId, message, { telegramToo }).catch((err) => log(`budget alert failed: ${err.message}`));
   }
   return alert;
 }
@@ -135,7 +147,8 @@ async function claimDue(column, whereSql, inputs) {
     OUTPUT INSERTED.user_id AS userId
     FROM user_settings s
     WHERE (s.${column} IS NULL OR s.${column} < CAST(@today AS date))
-      AND EXISTS (SELECT 1 FROM push_subscriptions p WHERE p.user_id = s.user_id)
+      AND (EXISTS (SELECT 1 FROM push_subscriptions p WHERE p.user_id = s.user_id)
+           OR (s.telegram_notify = 1 AND EXISTS (SELECT 1 FROM telegram_links t WHERE t.user_id = s.user_id)))
       AND ${whereSql}
   `);
   return r.recordset.map((row) => row.userId);
@@ -149,9 +162,9 @@ async function sendDailyReminders(today, now) {
   for (const userId of due) {
     // Only nudge people who haven't logged anything today.
     if ((await transactions.countOn(userId, today)) > 0) continue;
-    await push.sendToUser(userId, {
+    await deliver(userId, {
       title: "Logged today's spending?",
-      body: 'Take ten seconds to add what you spent today.',
+      body: 'Take ten seconds to add what you spent today. On Telegram, just reply with it, e.g. "makan 35k".',
       url: '/?add=expense',
       tag: 'daily-reminder',
     });
@@ -163,7 +176,7 @@ async function sendWeeklySummaries(today, now) {
   const due = await claimDue('last_weekly_on', 's.weekly_summary = 1', [['today', sql.VarChar(10), today]]);
   for (const userId of due) {
     const message = await weeklyMessage(userId);
-    if (message) await push.sendToUser(userId, message);
+    if (message) await deliver(userId, message);
   }
 }
 
@@ -176,7 +189,7 @@ async function tick(date = new Date()) {
 }
 
 async function sendTest(userId) {
-  return push.sendToUser(userId, { title: 'Notifications are on', body: "You'll get reminders and alerts here.", url: '/', tag: 'test' });
+  return deliver(userId, { title: 'Notifications are on', body: "You'll get reminders and alerts here.", url: '/', tag: 'test' });
 }
 
 module.exports = { getSettings, updateSettings, ensureSettings, checkBudget, tick, sendTest, weeklyMessage };
