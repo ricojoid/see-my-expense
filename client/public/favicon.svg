@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#d9ff4a"/>
+      <stop offset="1" stop-color="#22d3ee"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="120" fill="url(#bg)"/>
+  <!-- coin -->
+  <circle cx="256" cy="262" r="152" fill="#0b0d12"/>
+  <!-- S -->
+  <path d="M300 208c-11-15-28-24-48-24-28 0-48 15-48 37 0 50 100 26 100 76 0 22-22 37-52 37-22 0-39-9-52-24"
+        fill="none" stroke="url(#bg)" stroke-width="36" stroke-linecap="round"/>
+  <!-- sparkle -->
+  <path d="M402 84l11 27 27 11-27 11-11 27-11-27-27-11 27-11z" fill="#0b0d12"/>
+</svg>

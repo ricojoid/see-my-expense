@@ -1,133 +1,92 @@
-import { useEffect, useState, useCallback } from 'react';
-import Header from './components/Header.jsx';
-import SummaryCards from './components/SummaryCards.jsx';
-import TransactionForm from './components/TransactionForm.jsx';
-import TransactionList from './components/TransactionList.jsx';
-import CategoryManager from './components/CategoryManager.jsx';
-import LoginPage from './components/LoginPage.jsx';
-import MatrixRain from './components/MatrixRain.jsx';
-import {
-  fetchTransactions,
-  fetchSummary,
-  fetchCategories,
-  createTransaction,
-  deleteTransaction,
-  getToken,
-  clearToken,
-} from './api.js';
+import { useCallback, useMemo, useState } from 'react';
+import { AnimatePresence, MotionConfig, motion } from 'framer-motion';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { DataProvider } from './context/DataContext';
+import { ToastProvider } from './context/ToastContext';
+import { NavigationContext } from './context/NavigationContext';
+import { PrivacyProvider } from './context/PrivacyContext';
+import AppShell from './components/layout/AppShell';
+import Logo from './components/ui/Logo';
+import LoginPage from './features/auth/LoginPage';
+import HomePage from './features/home/HomePage';
+import ActivityPage from './features/activity/ActivityPage';
+import DebtsPage from './features/debts/DebtsPage';
+import InsightsPage from './features/insights/InsightsPage';
+import SettingsPage from './features/settings/SettingsPage';
+import TransactionEditor from './features/transactions/TransactionEditor';
 
-export default function App() {
-  const [authed, setAuthed] = useState(() => Boolean(getToken()));
-  const [view, setView] = useState('dashboard');
+const PAGES = {
+  home: HomePage,
+  activity: ActivityPage,
+  debts: DebtsPage,
+  insights: InsightsPage,
+  settings: SettingsPage,
+};
 
-  const [transactions, setTransactions] = useState([]);
-  const [summary, setSummary] = useState(null);
-  const [categories, setCategories] = useState([]);
-  const [filter, setFilter] = useState('all');
-  const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState('');
+function Splash() {
+  return (
+    <div className="grid min-h-dvh place-items-center">
+      <motion.div animate={{ scale: [1, 1.08, 1] }} transition={{ duration: 1.4, repeat: Infinity }}>
+        <Logo size={64} />
+      </motion.div>
+    </div>
+  );
+}
 
-  const handleAuthFailure = useCallback(() => {
-    clearToken();
-    setAuthed(false);
+function SignedInApp() {
+  // `param` carries context into a page, e.g. a category for Activity or a section for Settings.
+  const [route, setRoute] = useState({ page: 'home', param: null, key: 0 });
+  const navigate = useCallback((page, param = null) => {
+    setRoute((r) => ({ page, param, key: r.key + 1 }));
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const [txs, sum, cats] = await Promise.all([
-        fetchTransactions(filter === 'all' ? {} : { type: filter }),
-        fetchSummary(),
-        fetchCategories(),
-      ]);
-      setTransactions(txs);
-      setSummary(sum);
-      setCategories(cats);
-    } catch (err) {
-      if (err.name === 'AuthError' || /session expired/i.test(err.message)) {
-        handleAuthFailure();
-        return;
-      }
-      setError(err.message || 'connection to backend failed');
-    } finally {
-      setLoading(false);
-    }
-  }, [filter, handleAuthFailure]);
-
-  useEffect(() => {
-    if (authed) load();
-  }, [authed, load]);
-
-  const handleCreate = async (payload) => {
-    setSubmitting(true);
-    try {
-      await createTransaction(payload);
-      await load();
-    } finally {
-      setSubmitting(false);
-    }
+  const navigation = useMemo(() => ({ page: route.page, navigate }), [route.page, navigate]);
+  const Page = PAGES[route.page];
+  const pageProps = {
+    onNavigate: navigate,
+    initialCategory: route.page === 'activity' ? route.param : undefined,
+    initialSection: route.page === 'settings' ? route.param : undefined,
   };
-
-  const handleDelete = async (id) => {
-    await deleteTransaction(id);
-    await load();
-  };
-
-  const handleLogout = () => {
-    clearToken();
-    setAuthed(false);
-  };
-
-  if (!authed) {
-    return (
-      <div className="relative min-h-screen">
-        <MatrixRain />
-        <LoginPage onSuccess={() => setAuthed(true)} />
-      </div>
-    );
-  }
 
   return (
-    <div className="relative min-h-screen">
-      <MatrixRain />
-      <div className="relative z-10">
-        <Header view={view} onNavigate={setView} onLogout={handleLogout} />
-        <main className="mx-auto max-w-5xl space-y-6 px-4 py-6">
-          {error && (
-            <div className="rounded border border-term-red bg-term-red/10 px-3 py-2 text-sm text-term-red">
-              {`!! ${error} -- is the server running on :4000?`}
-            </div>
-          )}
+    <PrivacyProvider>
+      <DataProvider>
+        <NavigationContext.Provider value={navigation}>
+          <AppShell page={route.page} onNavigate={navigate}>
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={`${route.page}-${route.key}`}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+              >
+                <Page {...pageProps} />
+              </motion.div>
+            </AnimatePresence>
+          </AppShell>
+        </NavigationContext.Provider>
+        <TransactionEditor />
+      </DataProvider>
+    </PrivacyProvider>
+  );
+}
 
-          {view === 'dashboard' ? (
-            <>
-              <SummaryCards summary={summary} loading={loading} />
+function Root() {
+  const { status } = useAuth();
+  if (status === 'checking') return <Splash />;
+  return status === 'signed-in' ? <SignedInApp /> : <LoginPage />;
+}
 
-              <div className="grid grid-cols-1 gap-6 lg:grid-cols-[360px_1fr]">
-                <TransactionForm
-                  categories={categories}
-                  onSubmit={handleCreate}
-                  submitting={submitting}
-                />
-                <TransactionList
-                  transactions={transactions}
-                  onDelete={handleDelete}
-                  filter={filter}
-                  onFilterChange={setFilter}
-                />
-              </div>
-            </>
-          ) : (
-            <CategoryManager />
-          )}
-
-          <footer className="pt-4 text-center text-xs text-term-dim">
-            See My EX-pense v1.0.0 :: connected to SQL Server (Windows Auth)
-          </footer>
-        </main>
-      </div>
-    </div>
+export default function App() {
+  return (
+    <MotionConfig reducedMotion="user">
+      <ToastProvider>
+        <AuthProvider>
+          <Root />
+        </AuthProvider>
+      </ToastProvider>
+    </MotionConfig>
   );
 }

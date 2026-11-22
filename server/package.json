@@ -1,19 +1,28 @@
 {
   "name": "see-my-expense-server",
-  "version": "1.0.0",
-  "description": "Express API backend for see-my-EXpense, backed by local SQL Server",
+  "version": "2.0.0",
+  "description": "Express API for See My EX-pense, backed by SQL Server",
   "main": "src/server.js",
   "type": "commonjs",
+  "private": true,
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "setup-db": "node sql/setup.js"
+    "setup-db": "node db/setup.js",
+    "test": "node --test \"test/**/*.test.js\""
   },
   "dependencies": {
+    "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
-    "mssql": "^11.0.1",
+    "jsonwebtoken": "^9.0.2",
+    "mssql": "^11.0.1"
+  },
+  "optionalDependencies": {
     "msnodesqlv8": "^4.4.1"
   }
 }

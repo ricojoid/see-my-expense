@@ -2,39 +2,94 @@
 @tailwind components;
 @tailwind utilities;
 
-html,
-body,
-#root {
-  height: 100%;
+@layer base {
+  :root {
+    color-scheme: dark;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  html,
+  body,
+  #root {
+    min-height: 100%;
+  }
+
+  body {
+    @apply bg-bg font-sans text-ink antialiased;
+    overscroll-behavior-y: none;
+  }
+
+  ::selection {
+    @apply bg-accent text-accent-ink;
+  }
+
+  /* 16px inputs stop iOS Safari from zooming in on focus. */
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+
+  input[type='date']::-webkit-calendar-picker-indicator {
+    filter: invert(1);
+    opacity: 0.6;
+    cursor: pointer;
+  }
+
+  input[type='number']::-webkit-inner-spin-button,
+  input[type='number']::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+
+  :focus-visible {
+    @apply outline-none ring-2 ring-accent/70 ring-offset-2 ring-offset-bg;
+  }
 }
 
-body {
-  background-color: #0a0e0a;
-  background-image:
-    linear-gradient(rgba(57, 255, 20, 0.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(57, 255, 20, 0.04) 1px, transparent 1px);
-  background-size: 24px 24px;
-  color: #39ff14;
-  font-family: 'Fira Code', 'Courier New', monospace;
+@layer components {
+  .card {
+    @apply rounded-3xl border border-line bg-surface/80 shadow-card backdrop-blur-xl;
+  }
+
+  .field {
+    @apply w-full rounded-2xl border border-line bg-surface-2 px-4 py-3 text-ink placeholder:text-ink-3
+      outline-none transition focus:border-accent/60 focus:bg-surface-3;
+  }
+
+  .label {
+    @apply mb-2 block text-xs font-semibold uppercase tracking-wider text-ink-3;
+  }
+
+  .text-gradient {
+    @apply bg-gradient-to-r from-accent to-cyan-brand bg-clip-text text-transparent;
+  }
+
+  .scrollbar-none {
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
 }
 
-::selection {
-  background: #39ff14;
-  color: #0a0e0a;
+@layer utilities {
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .pt-safe {
+    padding-top: env(safe-area-inset-top);
+  }
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
 }
 
-::-webkit-scrollbar {
-  width: 10px;
-}
-::-webkit-scrollbar-track {
-  background: #0d1410;
-}
-::-webkit-scrollbar-thumb {
-  background: #1f3a26;
-  border: 1px solid #39ff14;
-}
-
-input[type='date']::-webkit-calendar-picker-indicator {
-  filter: invert(62%) sepia(78%) saturate(4000%) hue-rotate(75deg) brightness(1.1);
-  cursor: pointer;
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }

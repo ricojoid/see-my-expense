@@ -1,88 +1,122 @@
 # See My EX-pense
 
-A simple income/expense tracker with a hacker/terminal theme — Matrix-style animated
-background, login gate, category master data, and Rupiah currency formatting.
+A modern, mobile-first money tracker: income, expenses, transfers between wallets,
+monthly budgets, recurring bills, insights and multi-user accounts.
 
-- **Frontend:** React + Vite + Tailwind CSS
-- **Backend:** Express (Node.js)
-- **Database:** local SQL Server (`DESKTOP-8IN7U4N\SQLEXPRESS`), Windows Authentication
+- **Frontend:** React 18 + Vite + Tailwind CSS + Framer Motion (installable PWA)
+- **Backend:** Node.js + Express, JWT auth with bcrypt-hashed passwords
+- **Database:** SQL Server (Windows auth for local dev, SQL auth in Docker)
 
-## Prerequisites
+## Features
 
-- Node.js 18+
-- SQL Server Express running on `DESKTOP-8IN7U4N\SQLEXPRESS`, with your Windows account allowed to log in
-- **ODBC Driver 18 for SQL Server** (or 17 — edit the driver name in `server/src/db.js` and `server/sql/setup.js` if you only have 17 installed). Check with:
-  ```powershell
-  Get-OdbcDriver | Where-Object Name -like "*SQL Server*"
-  ```
-  If missing, install it from Microsoft's "ODBC Driver for SQL Server" download.
+- **Fast entry, no dropdowns:** tap chips for type, category (most-used first), account and date; quick `+10k / +50k / +100k` amounts
+- **Spending first:** the home screen shows what you spent this month; income is shown on its own and
+  never netted against spending (not every income source has to be tracked)
+- **Hide amounts** with the eye button in the header (remembered per device)
+- **Edit and delete** any transaction, with **Undo** after delete
+- **Transfers** between accounts (Cash, Bank, e-wallets) with a live balance per account
+- **Month switcher**, search, type and account filters, paginated activity grouped by day
+- **Insights:** spending by category, 6-month income vs expense chart (with a table view), daily average spend
+- **Debts:** track who owes you and whom you owe, per person. Lending or paying back is an expense,
+  borrowing or being paid back is income, so balances and stats stay right. Switch on *Debt* when adding
+  a transaction, or use the Debts page; *Mark as settled* books the remaining balance in one tap
+- **Budgets** per expense category with on-track / close / over status
+- **Recurring transactions** (salary, rent, subscriptions) booked automatically each month
+- **CSV export and import** (Excel friendly, accepts `25.000` and `31/12/2026` formats, all-or-nothing)
+- **Multi-user:** admins register accounts; every user's data is private
+- Responsive: bottom navigation and bottom sheets on phones, sidebar and dialogs on desktop
 
-## 1. Create the database
+## Project structure
+
+```
+server/
+  db/setup.js            create / migrate the database (idempotent)
+  src/
+    app.js               express app (middleware + routes)
+    server.js            starts the HTTP server
+    config/              env + database connection
+    middleware/          auth, params, error handling
+    routes/              HTTP layer only: parse, call a service, respond
+    services/            business logic and SQL
+    lib/                 pure helpers (dates, csv, validation, rate limit)
+  test/                  unit tests (node --test)
+client/
+  src/
+    api/                 fetch client + endpoint functions
+    context/             auth, toasts, shared app data
+    hooks/               small reusable hooks
+    lib/                 formatting, dates, category icons
+    components/ui/       buttons, chips, sheets, ...
+    components/layout/   app shell, navigation, month switcher
+    components/charts/   trend chart, category bars
+    features/            one folder per screen (home, activity, debts, insights, settings, auth, transactions)
+docker-compose.yml       SQL Server + API + web
+```
+
+## Run with Docker (server deployment)
+
+Requires Docker with Compose v2 on an x86-64 host (the SQL Server image has no ARM build).
+
+```bash
+cp .env.example .env        # fill in MSSQL_SA_PASSWORD, JWT_SECRET, ADMIN_PASSWORD
+docker compose up -d --build
+```
+
+Open `http://<server>:8080` and sign in with `ADMIN_USERNAME` / `ADMIN_PASSWORD`.
+The database lives in the `mssql-data` volume, and the API migrates it on every start.
+Put HTTPS in front (Caddy, nginx, Cloudflare Tunnel...) before exposing it to the internet.
+
+## Run locally (Windows, SQL Server Express)
+
+Prerequisites: Node.js 18+, SQL Server Express, ODBC Driver 17 or 18 for SQL Server.
 
 ```bash
 cd server
 npm install
-copy .env.example .env    # defaults already point at DESKTOP-8IN7U4N\SQLEXPRESS
-npm run setup-db          # creates/migrates the "expense_tracker" DB, "categories" and "transactions" tables
-```
+copy .env.example .env      # set DB_SERVER, JWT_SECRET, ADMIN_PASSWORD
+npm run setup-db            # creates / migrates the database and the first admin
+npm run dev                 # http://localhost:4000
 
-`setup-db` is safe to re-run. If you already had a `transactions` table from an
-earlier version (free-text category column), it automatically migrates existing
-rows to the new `categories` master table without losing data.
-
-## 2. Run the backend
-
-```bash
-cd server
-npm run dev                # http://localhost:4000
-```
-
-## 3. Run the frontend
-
-```bash
-cd client
+cd ../client
 npm install
-npm run dev                # http://localhost:5173
+npm run dev                 # http://localhost:5173 (proxies /api to :4000)
 ```
 
-The Vite dev server proxies `/api` requests to `http://localhost:4000`, so just open http://localhost:5173.
+To open it on your phone on the same Wi-Fi, run `npm run dev -- --host` in `client`
+and visit `http://<your-pc-ip>:5173`. Use "Add to Home Screen" to install it as an app.
 
-## Login
+Upgrading from v1 (single user)? `npm run setup-db` keeps all existing data and assigns it
+to the first admin account.
 
-The app is gated behind a login screen.
+## Tests
 
-- **Username:** `admin`
-- **Password:** `admin123`
-
-Change these via `ADMIN_USERNAME` / `ADMIN_PASSWORD` in `server/.env`. The API
-issues a static bearer token (`AUTH_TOKEN` in `.env`) on successful login, stored
-in the browser's `localStorage` and sent as `Authorization: Bearer <token>` on
-every request. All `/api/transactions` and `/api/categories` routes require it.
-
-## Categories (master data)
-
-Categories are stored in the database, not hardcoded. Use the **CATEGORIES** tab
-in the app to add, rename, or delete income/expense categories. A category
-can't be deleted while transactions still reference it (the API returns 409).
+```bash
+cd server && npm test
+```
 
 ## API
 
-| Method | Route                          | Description                          |
-|--------|---------------------------------|---------------------------------------|
-| POST   | `/api/auth/login`              | Log in, returns a bearer token        |
-| GET    | `/api/categories`               | List categories (`?type=income\|expense`) |
-| POST   | `/api/categories`               | Create a category                     |
-| PUT    | `/api/categories/:id`           | Rename/retype a category              |
-| DELETE | `/api/categories/:id`           | Delete a category (blocked if in use) |
-| GET    | `/api/transactions`            | List transactions (`?type=`, `?month=YYYY-MM`) |
-| GET    | `/api/transactions/summary`    | Totals: income, expense, balance      |
-| POST   | `/api/transactions`            | Create a transaction (`categoryId`, not free text) |
-| DELETE | `/api/transactions/:id`        | Delete a transaction                  |
+All routes except `POST /api/auth/login` and `GET /api/health` need `Authorization: Bearer <token>`.
 
-All routes except `/api/auth/login` and `/api/health` require the bearer token.
-
-## Notes
-
-- Authentication to SQL Server uses **Windows Integrated Auth** (`Trusted_Connection=Yes`) via the `msnodesqlv8` driver — no password stored anywhere.
-- If your machine only has a differently-named instance or a different ODBC driver installed, adjust `DB_SERVER` in `server/.env` and the `Driver={...}` string in `server/src/db.js` / `server/sql/setup.js`.
-- Currency is formatted as Indonesian Rupiah (`Rp`).
+| Method | Route | Description |
+|---|---|---|
+| POST | `/api/auth/login` | Sign in, returns `{ token, user }` (5 failed tries per 15 min) |
+| GET | `/api/auth/me` | Current user |
+| PUT | `/api/auth/me/password` | Change own password |
+| GET/POST | `/api/users` | List / register users (admin) |
+| PUT | `/api/users/:id/password`, `/api/users/:id/role` | Reset password, change role (admin) |
+| DELETE | `/api/users/:id` | Delete a user and their data (admin) |
+| GET | `/api/transactions` | `?month&type&accountId&categoryId&personId&q&page&pageSize` |
+| GET | `/api/transactions/summary` | Month income / expense / net + total balance |
+| GET | `/api/transactions/stats` | By-category totals + 6-month trend |
+| GET | `/api/transactions/export` | CSV download (same filters) |
+| POST | `/api/transactions/import` | `{ csv }`, all-or-nothing |
+| POST/PUT/DELETE | `/api/transactions[/:id]` | Create / update / delete. Debts: pass `personId` or `personName` instead of `categoryId` |
+| GET/POST/PUT/DELETE | `/api/categories[/:id]` | Categories |
+| GET/POST/PUT/DELETE | `/api/accounts[/:id]` | Accounts with balances |
+| GET | `/api/budgets?month=` | Budgets with spent amounts |
+| PUT | `/api/budgets/:categoryId` | `{ amount }`, 0 removes |
+| GET | `/api/people` | People with debt balances (positive: they owe you) |
+| PUT/DELETE | `/api/people/:id` | Rename / remove (transactions are kept) |
+| GET/POST | `/api/recurring` | Monthly recurring rules |
+| PATCH/DELETE | `/api/recurring/:id` | Pause / resume / delete |

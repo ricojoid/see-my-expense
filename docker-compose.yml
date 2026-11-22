@@ -1,0 +1,58 @@
+# See My EX-pense: SQL Server + API + web, one command.
+#
+#   cp .env.example .env      # then fill in the secrets
+#   docker compose up -d --build
+#
+# The app is then on http://<server>:${APP_PORT:-8080}
+
+services:
+  db:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    restart: unless-stopped
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: Express
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?set MSSQL_SA_PASSWORD in .env}
+      TZ: Asia/Jakarta
+    volumes:
+      - mssql-data:/var/opt/mssql
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q 'SELECT 1' -b -o /dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+    # Not published: only the API talks to it. Uncomment to reach it from your PC.
+    # ports:
+    #   - "1433:1433"
+
+  api:
+    build: ./server
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PORT: 4000
+      DB_SERVER: db
+      DB_PORT: 1433
+      DB_DATABASE: ${DB_DATABASE:-expense_tracker}
+      DB_USER: sa
+      DB_PASSWORD: ${MSSQL_SA_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+      TOKEN_TTL: ${TOKEN_TTL:-7d}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?set ADMIN_PASSWORD in .env}
+      TZ: Asia/Jakarta
+
+  web:
+    build: ./client
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "${APP_PORT:-8080}:80"
+
+volumes:
+  mssql-data:
