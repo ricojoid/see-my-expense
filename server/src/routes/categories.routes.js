@@ -1,11 +1,15 @@
 const express = require('express');
 const categories = require('../services/categories.service');
+const rules = require('../services/rules.service');
 const { idParam } = require('../middleware/params');
 const { asyncHandler } = require('../lib/http');
 
 const router = express.Router();
 
 router.get('/', asyncHandler(async (req, res) => res.json(await categories.list(req.user.id))));
+
+/** Keywords learned from corrections, for the quick-entry parser. */
+router.get('/rules', asyncHandler(async (req, res) => res.json(await rules.list(req.user.id))));
 
 router.post(
   '/',

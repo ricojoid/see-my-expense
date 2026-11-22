@@ -207,19 +207,27 @@ async function weeklyRecap(userId, today = todayLocal()) {
 }
 
 /** Spent and earned in [start, end), kept apart, plus the number of expenses. */
-async function totalsBetween(userId, start, end) {
+/**
+ * Spent and earned in [start, end), kept apart, plus the number of expenses.
+ * `categoryId` narrows it to one category; `recurring: false` leaves out
+ * transactions booked by recurring rules (for daily-rate estimates).
+ */
+async function totalsBetween(userId, start, end, { categoryId, recurring = true } = {}) {
   const pool = await getPool();
   const r = await pool
     .request()
     .input('uid', sql.Int, userId)
     .input('start', sql.VarChar(10), start)
     .input('end', sql.VarChar(10), end)
+    .input('cat', sql.Int, categoryId ?? null)
     .query(`
       SELECT ISNULL(SUM(CASE WHEN type = 'expense' THEN amount END), 0) AS expense,
              ISNULL(SUM(CASE WHEN type = 'income' THEN amount END), 0) AS income,
              COUNT(CASE WHEN type = 'expense' THEN 1 END) AS expenseCount
       FROM transactions
       WHERE user_id = @uid AND occurred_on >= CAST(@start AS date) AND occurred_on < CAST(@end AS date)
+        AND (@cat IS NULL OR category_id = @cat)
+        ${recurring ? '' : 'AND recurring_id IS NULL'}
     `);
   const row = r.recordset[0];
   return { expense: Number(row.expense), income: Number(row.income), expenseCount: row.expenseCount };
@@ -268,19 +276,58 @@ function bindTx(request, tx) {
     .input('person', sql.Int, tx.personId ?? null);
 }
 
-/** `tx` is the output of validateTransaction(). Debt links are resolved in the same DB transaction. */
+/** Inserts one validated transaction inside a DB transaction (debt links resolved first). Returns its id. */
+async function insertTx(newRequest, userId, tx) {
+  const resolved = await resolveDebt(newRequest, userId, tx);
+  await assertTransactionRefs(newRequest, resolved, userId);
+  const result = await bindTx(newRequest().input('uid', sql.Int, userId), resolved).query(`
+    INSERT INTO transactions (user_id, type, category_id, account_id, to_account_id, person_id, amount, description, occurred_on)
+    OUTPUT INSERTED.id
+    VALUES (@uid, @type, @cat, @acc, @toAcc, @person, @amount, @desc, CAST(@date AS date))
+  `);
+  return result.recordset[0].id;
+}
+
+/** `tx` is the output of validateTransaction(). */
 async function create(userId, tx) {
-  const id = await withTransaction(async (newRequest) => {
-    const resolved = await resolveDebt(newRequest, userId, tx);
-    await assertTransactionRefs(newRequest, resolved, userId);
-    const result = await bindTx(newRequest().input('uid', sql.Int, userId), resolved).query(`
-      INSERT INTO transactions (user_id, type, category_id, account_id, to_account_id, person_id, amount, description, occurred_on)
-      OUTPUT INSERTED.id
-      VALUES (@uid, @type, @cat, @acc, @toAcc, @person, @amount, @desc, CAST(@date AS date))
-    `);
-    return result.recordset[0].id;
-  });
+  const id = await withTransaction((newRequest) => insertTx(newRequest, userId, tx));
   return findById(userId, id);
+}
+
+/**
+ * A bill you paid for several people: your share as `tx` (an expense in its
+ * category), and each person's share lent to them (a debt). All or nothing.
+ * `people` are { personId } or { personName }; `count` includes you.
+ */
+async function createSplit(userId, tx, { count, people }) {
+  if (tx.type !== 'expense' || tx.personId || tx.personName) throw badRequest('only a plain expense can be split');
+  if (!Number.isInteger(count) || count < 2 || count > 20) throw badRequest('split between 2 and 20 people');
+  if (!Array.isArray(people) || people.length < 1 || people.length > count - 1) throw badRequest('name 1 to count - 1 people');
+  const share = Math.floor(tx.amount / count);
+  if (share < 1) throw badRequest('amount is too small to split');
+  const yours = tx.amount - share * people.length;
+  const what = tx.description || 'shared bill';
+
+  const ids = await withTransaction(async (newRequest) => {
+    const created = [await insertTx(newRequest, userId, { ...tx, amount: yours })];
+    for (const person of people) {
+      const personId = Number.isInteger(person?.personId) ? person.personId : null;
+      const personName = typeof person?.personName === 'string' ? person.personName.trim().slice(0, 50) : '';
+      if (!personId && !personName) throw badRequest('each person needs an id or a name');
+      created.push(
+        await insertTx(newRequest, userId, {
+          ...tx,
+          amount: share,
+          categoryId: null,
+          personId,
+          personName: personId ? null : personName,
+          description: `Split: ${what}`.slice(0, 255),
+        })
+      );
+    }
+    return created;
+  });
+  return { share, yours, transactions: await Promise.all(ids.map((id) => findById(userId, id))) };
 }
 
 async function update(userId, id, tx) {
@@ -396,4 +443,19 @@ async function importCsv(userId, text) {
   });
 }
 
-module.exports = { list, summary, stats, weeklyRecap, totalsBetween, lastAccountId, countOn, findById, create, update, remove, exportCsv, importCsv };
+module.exports = {
+  list,
+  summary,
+  stats,
+  weeklyRecap,
+  totalsBetween,
+  lastAccountId,
+  countOn,
+  findById,
+  create,
+  createSplit,
+  update,
+  remove,
+  exportCsv,
+  importCsv,
+};

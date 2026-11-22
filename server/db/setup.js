@@ -331,10 +331,77 @@ async function ensureNotifications(h) {
   if (!(await h.columnExists('user_settings', 'telegram_notify'))) {
     await h.q('ALTER TABLE user_settings ADD telegram_notify BIT NOT NULL CONSTRAINT DF_user_settings_telegram DEFAULT 1;');
   }
+  if (!(await h.columnExists('user_settings', 'monthly_report'))) {
+    await h.q(`
+      ALTER TABLE user_settings ADD
+        monthly_report BIT NOT NULL CONSTRAINT DF_user_settings_report DEFAULT 1,
+        last_report_month CHAR(7) NULL;
+    `);
+    log('user_settings: added monthly report');
+  }
+}
+
+/** Keywords learned from category corrections ("indomaret" -> Groceries). */
+async function ensureCategoryRules(h) {
+  if (await h.tableExists('category_rules')) return;
+  await h.q(`
+    CREATE TABLE category_rules (
+      id INT IDENTITY(1,1) PRIMARY KEY,
+      user_id INT NOT NULL CONSTRAINT FK_category_rules_user REFERENCES users(id),
+      keyword NVARCHAR(60) NOT NULL,
+      category_id INT NOT NULL CONSTRAINT FK_category_rules_category REFERENCES categories(id) ON DELETE CASCADE,
+      updated_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
+      CONSTRAINT UQ_category_rules_user_keyword UNIQUE (user_id, keyword)
+    );
+  `);
+  log('created table category_rules');
+}
+
+/** Savings goals and the money put towards them (not spending, so not transactions). */
+async function ensureGoals(h) {
+  if (!(await h.tableExists('goals'))) {
+    await h.q(`
+      CREATE TABLE goals (
+        id INT IDENTITY(1,1) PRIMARY KEY,
+        user_id INT NOT NULL CONSTRAINT FK_goals_user REFERENCES users(id),
+        name NVARCHAR(60) NOT NULL,
+        target DECIMAL(14,2) NOT NULL CONSTRAINT CK_goals_target CHECK (target > 0),
+        deadline DATE NULL,
+        created_at DATETIME2 NOT NULL DEFAULT SYSDATETIME()
+      );
+    `);
+    log('created table goals');
+  }
+  if (!(await h.tableExists('goal_contributions'))) {
+    await h.q(`
+      CREATE TABLE goal_contributions (
+        id INT IDENTITY(1,1) PRIMARY KEY,
+        goal_id INT NOT NULL CONSTRAINT FK_goal_contributions_goal REFERENCES goals(id) ON DELETE CASCADE,
+        amount DECIMAL(14,2) NOT NULL CONSTRAINT CK_goal_contributions_amount CHECK (amount <> 0),
+        occurred_on DATE NOT NULL,
+        note NVARCHAR(100) NULL,
+        created_at DATETIME2 NOT NULL DEFAULT SYSDATETIME()
+      );
+    `);
+    log('created table goal_contributions');
+  }
 }
 
 /** Telegram chats linked to accounts, and the one-time codes that link them. */
 async function ensureTelegram(h) {
+  if (!(await h.tableExists('telegram_messages'))) {
+    // Which transactions a bot reply was about, so replying to it can correct them.
+    await h.q(`
+      CREATE TABLE telegram_messages (
+        chat_id BIGINT NOT NULL,
+        message_id INT NOT NULL,
+        transaction_id INT NOT NULL CONSTRAINT FK_telegram_messages_tx REFERENCES transactions(id) ON DELETE CASCADE,
+        created_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
+        CONSTRAINT PK_telegram_messages PRIMARY KEY (chat_id, message_id, transaction_id)
+      );
+    `);
+    log('created table telegram_messages');
+  }
   if (!(await h.tableExists('telegram_links'))) {
     await h.q(`
       CREATE TABLE telegram_links (
@@ -374,6 +441,8 @@ async function main() {
     await ensureBudgets(h);
     await ensureNotifications(h);
     await ensureTelegram(h);
+    await ensureCategoryRules(h);
+    await ensureGoals(h);
 
     const cats = await h.q(`SELECT COUNT(*) AS n FROM categories WHERE user_id = ${adminId}`);
     if (cats.recordset[0].n === 0) {

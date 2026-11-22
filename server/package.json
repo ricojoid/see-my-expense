@@ -21,6 +21,7 @@
     "express": "^4.19.2",
     "jsonwebtoken": "^9.0.2",
     "mssql": "^11.0.1",
+    "pdfkit": "^0.21.0",
     "web-push": "^4.0.0"
   },
   "optionalDependencies": {

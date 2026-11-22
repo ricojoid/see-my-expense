@@ -1,14 +1,23 @@
 const { sql, getPool } = require('../config/db');
 const { badRequest } = require('../lib/http');
-const { timeLocal, todayLocal, weekday } = require('../lib/dates');
+const { shiftMonth, timeLocal, todayLocal, weekday } = require('../lib/dates');
 const { budgetCrossing, formatRupiah } = require('../lib/format');
 const push = require('./push.service');
 const telegram = require('./telegram.service');
+const report = require('./report.service');
 const budgets = require('./budgets.service');
 const transactions = require('./transactions.service');
 
-const DEFAULTS = { reminderEnabled: false, reminderTime: '21:00', budgetAlerts: true, weeklySummary: true, telegramNotify: true };
-const FLAGS = ['reminderEnabled', 'budgetAlerts', 'weeklySummary', 'telegramNotify'];
+const DEFAULTS = {
+  reminderEnabled: false,
+  reminderTime: '21:00',
+  budgetAlerts: true,
+  weeklySummary: true,
+  telegramNotify: true,
+  monthlyReport: true,
+};
+const FLAGS = ['reminderEnabled', 'budgetAlerts', 'weeklySummary', 'telegramNotify', 'monthlyReport'];
+const MONTHLY_TIME = '08:00';
 const WEEKLY_TIME = '08:00';
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -19,7 +28,7 @@ async function getSettings(userId) {
   const r = await pool.request().input('uid', sql.Int, userId).query(`
     SELECT CAST(reminder_enabled AS bit) AS reminderEnabled, reminder_time AS reminderTime,
            CAST(budget_alerts AS bit) AS budgetAlerts, CAST(weekly_summary AS bit) AS weeklySummary,
-           CAST(telegram_notify AS bit) AS telegramNotify
+           CAST(telegram_notify AS bit) AS telegramNotify, CAST(monthly_report AS bit) AS monthlyReport
     FROM user_settings WHERE user_id = @uid
   `);
   const row = r.recordset[0];
@@ -58,14 +67,16 @@ async function updateSettings(userId, body = {}) {
     .input('budget', sql.Bit, next.budgetAlerts)
     .input('weekly', sql.Bit, next.weeklySummary)
     .input('telegram', sql.Bit, next.telegramNotify)
+    .input('report', sql.Bit, next.monthlyReport)
     .input('skip', sql.VarChar(10), skipToday ? today : null)
     .query(`
       MERGE user_settings AS target
       USING (SELECT @uid AS user_id) AS src ON target.user_id = src.user_id
       WHEN MATCHED THEN UPDATE SET reminder_enabled = @enabled, reminder_time = @time, budget_alerts = @budget,
-        weekly_summary = @weekly, telegram_notify = @telegram, last_reminder_on = COALESCE(CAST(@skip AS date), last_reminder_on)
-      WHEN NOT MATCHED THEN INSERT (user_id, reminder_enabled, reminder_time, budget_alerts, weekly_summary, telegram_notify, last_reminder_on)
-        VALUES (@uid, @enabled, @time, @budget, @weekly, @telegram, CAST(@skip AS date));
+        weekly_summary = @weekly, telegram_notify = @telegram, monthly_report = @report,
+        last_reminder_on = COALESCE(CAST(@skip AS date), last_reminder_on)
+      WHEN NOT MATCHED THEN INSERT (user_id, reminder_enabled, reminder_time, budget_alerts, weekly_summary, telegram_notify, monthly_report, last_reminder_on)
+        VALUES (@uid, @enabled, @time, @budget, @weekly, @telegram, @report, CAST(@skip AS date));
     `);
   return next;
 }
@@ -180,16 +191,54 @@ async function sendWeeklySummaries(today, now) {
   }
 }
 
+/** Sends one user's report for `month` as a PDF to their Telegram chats. Returns how many got it. */
+async function sendMonthlyReport(userId, month, username) {
+  const pdf = await report.monthlyReport(userId, month, username);
+  const caption = `📊 Your <b>${telegram.escapeHtml(report.monthName(month))}</b> report`;
+  let sent = 0;
+  for (const link of await telegram.linksOf(userId)) {
+    try {
+      await telegram.sendDocument(link.chatId, pdf, report.reportFileName(month), caption);
+      sent++;
+    } catch (err) {
+      log(`monthly report to user ${userId} failed: ${err.message}`);
+    }
+  }
+  return sent;
+}
+
+/** On the 1st, last month's PDF report goes to everyone with Telegram linked (once). */
+async function sendMonthlyReports(today, now) {
+  if (today.slice(8, 10) !== '01' || now < MONTHLY_TIME || !telegram.isEnabled()) return;
+  const month = shiftMonth(today.slice(0, 7), -1);
+  const pool = await getPool();
+  const due = await pool
+    .request()
+    .input('month', sql.Char(7), month)
+    .query(`
+      UPDATE s SET last_report_month = @month
+      OUTPUT INSERTED.user_id AS userId
+      FROM user_settings s
+      WHERE s.monthly_report = 1 AND (s.last_report_month IS NULL OR s.last_report_month < @month)
+        AND EXISTS (SELECT 1 FROM telegram_links t WHERE t.user_id = s.user_id)
+    `);
+  for (const { userId } of due.recordset) {
+    const user = await pool.request().input('id', sql.Int, userId).query('SELECT username FROM users WHERE id = @id');
+    await sendMonthlyReport(userId, month, user.recordset[0]?.username || '');
+  }
+}
+
 /** Runs every minute from the scheduler. */
 async function tick(date = new Date()) {
   const today = todayLocal(date);
   const now = timeLocal(date);
   await sendDailyReminders(today, now);
   await sendWeeklySummaries(today, now);
+  await sendMonthlyReports(today, now);
 }
 
 async function sendTest(userId) {
   return deliver(userId, { title: 'Notifications are on', body: "You'll get reminders and alerts here.", url: '/', tag: 'test' });
 }
 
-module.exports = { getSettings, updateSettings, ensureSettings, checkBudget, tick, sendTest, weeklyMessage };
+module.exports = { getSettings, updateSettings, ensureSettings, sendMonthlyReport, checkBudget, tick, sendTest, weeklyMessage };

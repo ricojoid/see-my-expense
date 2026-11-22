@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { budgetsApi, transactionsApi } from '../../api';
+import { budgetsApi, insightsApi, transactionsApi } from '../../api';
 import { useData } from '../../context/DataContext';
 import { useMoney } from '../../context/PrivacyContext';
 import { useFetch } from '../../hooks/useFetch';
@@ -15,6 +15,8 @@ import EmptyState from '../../components/ui/EmptyState';
 import CategoryBars from '../../components/charts/CategoryBars';
 import TrendChart, { Legend, TrendTable } from '../../components/charts/TrendChart';
 import BudgetList from './BudgetList';
+import SubscriptionSuggestions from './SubscriptionSuggestions';
+import { useToast } from '../../context/ToastContext';
 
 function Tile({ label, value, hint, valueClass = '', delay }) {
   return (
@@ -34,6 +36,18 @@ function Tile({ label, value, hint, valueClass = '', delay }) {
 export default function InsightsPage({ onNavigate }) {
   const { month, version } = useData();
   const money = useMoney();
+  const toast = useToast();
+  const [downloading, setDownloading] = useState(false);
+  const downloadReport = async () => {
+    setDownloading(true);
+    try {
+      await insightsApi.downloadReport(month);
+    } catch (err) {
+      toast(err.message, { tone: 'error' });
+    } finally {
+      setDownloading(false);
+    }
+  };
   const [breakdown, setBreakdown] = useState('expense');
   const [trendView, setTrendView] = useState('chart');
   const stats = useFetch(() => transactionsApi.stats(month), [month, version]);
@@ -47,7 +61,16 @@ export default function InsightsPage({ onNavigate }) {
 
   return (
     <>
-      <PageHeader eyebrow="Where the money goes" title="Insights" action={<MonthSwitcher className="hidden sm:flex" />} />
+      <PageHeader
+        eyebrow="Where the money goes"
+        title="Insights"
+        action={
+          <>
+            <MonthSwitcher className="hidden sm:flex" />
+            <Button size="icon" variant="secondary" icon="download" loading={downloading} onClick={downloadReport} aria-label="Download PDF report" title="Download PDF report" />
+          </>
+        }
+      />
       <MonthSwitcher className="mb-4 w-full justify-between sm:hidden" />
 
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -110,6 +133,8 @@ export default function InsightsPage({ onNavigate }) {
               <TrendTable data={stats.data.trend} />
             )}
           </Card>
+
+          <SubscriptionSuggestions />
 
           <Card
             title="Budgets"

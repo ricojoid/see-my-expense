@@ -4,13 +4,11 @@ import { useToast } from '../../context/ToastContext';
 import { useFetch } from '../../hooks/useFetch';
 import { categoryIcon } from '../../lib/categoryIcon';
 import { formatDateLong } from '../../lib/dates';
-import { signFor } from '../../lib/format';
+import { ordinal, signFor } from '../../lib/format';
 import ConfirmButton from '../../components/ui/ConfirmButton';
 import EmptyState from '../../components/ui/EmptyState';
 import Skeleton from '../../components/ui/Skeleton';
 import { useMoney } from '../../context/PrivacyContext';
-
-const ordinal = (n) => `${n}${['th', 'st', 'nd', 'rd'][n % 100 > 10 && n % 100 < 14 ? 0 : n % 10 < 4 ? n % 10 : 0]}`;
 
 export default function RecurringSection() {
   const money = useMoney();

@@ -13,6 +13,7 @@ import LoginPage from './features/auth/LoginPage';
 import HomePage from './features/home/HomePage';
 import ActivityPage from './features/activity/ActivityPage';
 import DebtsPage from './features/debts/DebtsPage';
+import GoalsPage from './features/goals/GoalsPage';
 import InsightsPage from './features/insights/InsightsPage';
 import SettingsPage from './features/settings/SettingsPage';
 import TransactionEditor from './features/transactions/TransactionEditor';
@@ -22,6 +23,7 @@ const PAGES = {
   home: HomePage,
   activity: ActivityPage,
   debts: DebtsPage,
+  goals: GoalsPage,
   insights: InsightsPage,
   settings: SettingsPage,
 };

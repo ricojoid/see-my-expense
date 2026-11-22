@@ -6,8 +6,11 @@ const { seedUserDefaults } = require('./seed.service');
 
 const ROLES = ['admin', 'user'];
 // Children first, so foreign keys never block the delete.
+// Order matters: children before what they reference.
 const USER_OWNED_TABLES = [
-  'transactions',
+  'category_rules',
+  'goals', // goal_contributions go with them (ON DELETE CASCADE)
+  'transactions', // telegram_messages go with them
   'recurring_transactions',
   'budgets',
   'categories',

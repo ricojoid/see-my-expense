@@ -21,3 +21,6 @@ export const formatGrouped = (value) => (value ? grouped.format(value) : '');
 export const parseDigits = (text) => Number(String(text).replace(/\D/g, '').slice(0, 13)) || 0;
 
 export const signFor = (type) => (type === 'income' ? '+' : type === 'expense' ? '−' : '');
+
+/** 1st, 2nd, 3rd, 4th, 11th, 21st ... */
+export const ordinal = (n) => `${n}${['th', 'st', 'nd', 'rd'][n % 100 > 10 && n % 100 < 14 ? 0 : n % 10 < 4 ? n % 10 : 0]}`;

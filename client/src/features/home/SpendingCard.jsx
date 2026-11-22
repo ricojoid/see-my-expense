@@ -2,7 +2,8 @@ import { motion } from 'framer-motion';
 import AnimatedNumber from '../../components/ui/AnimatedNumber';
 import Icon from '../../components/ui/Icon';
 import { useMoney } from '../../context/PrivacyContext';
-import { daysElapsed, formatMonth } from '../../lib/dates';
+import { currentMonth, daysElapsed, formatMonth } from '../../lib/dates';
+import Projection from './Projection';
 
 function Stat({ label, value, icon, tone, large = false }) {
   const money = useMoney();
@@ -58,6 +59,7 @@ export default function SpendingCard({ summary, month }) {
             <Stat label="Avg outcome / day" value={days ? expense / days : 0} icon="calendar" tone="bg-white/10 text-ink-2" />
           </div>
         </div>
+        {month === currentMonth() && <Projection />}
       </div>
     </motion.section>
   );

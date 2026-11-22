@@ -45,6 +45,21 @@ const escapeHtml = (text) => String(text).replace(/&/g, '&amp;').replace(/</g, '
 const sendMessage = (chatId, text, extra = {}) =>
   api('sendMessage', { chat_id: chatId, text, parse_mode: 'HTML', disable_web_page_preview: true, ...extra });
 
+/** Uploads a file (e.g. the monthly PDF) to a chat. */
+async function sendDocument(chatId, buffer, filename, caption) {
+  const form = new FormData();
+  form.append('chat_id', String(chatId));
+  form.append('document', new Blob([buffer], { type: 'application/pdf' }), filename);
+  if (caption) {
+    form.append('caption', caption);
+    form.append('parse_mode', 'HTML');
+  }
+  const res = await fetch(`${apiBase()}/bot${token()}/sendDocument`, { method: 'POST', body: form, signal: AbortSignal.timeout(60000) });
+  const data = await res.json().catch(() => ({}));
+  if (!data.ok) throw new TelegramError('sendDocument', res.status, data.description || 'request failed');
+  return data.result;
+}
+
 // ---- Linking ----
 
 /** A one-time code and the t.me link that hands it to the bot. */
@@ -96,6 +111,7 @@ async function userForChat(chatId) {
   return r.recordset[0] || null;
 }
 
+/** The chats linked to a user. */
 async function linksOf(userId) {
   const pool = await getPool();
   const r = await pool
@@ -151,6 +167,8 @@ module.exports = {
   api,
   escapeHtml,
   sendMessage,
+  sendDocument,
+  linksOf,
   getBotUsername,
   createLinkCode,
   redeemLinkCode,

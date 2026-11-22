@@ -21,6 +21,7 @@ import { DEBT_CATEGORY } from '../debts/debtText';
 import AmountInput from './AmountInput';
 import DatePicker from './DatePicker';
 import QuickEntry from './QuickEntry';
+import SplitPanel from './SplitPanel';
 
 const COLLAPSED_CATEGORIES = 11;
 
@@ -44,6 +45,7 @@ function emptyForm(accounts) {
     debt: false,
     personId: null,
     personName: '',
+    split: null, // { count, people } from quick entry: "makan 300k bagi 3 sama budi sari"
   };
 }
 
@@ -59,6 +61,7 @@ const fromTransaction = (t) => ({
   debt: t.personId != null,
   personId: t.personId ?? null,
   personName: '',
+  split: null,
 });
 
 const isDebt = (f) => f.debt && f.type !== 'transfer';
@@ -137,7 +140,7 @@ function AccountChips({ accounts, value, onChange, exclude, tone }) {
 }
 
 export default function TransactionEditor() {
-  const { editor, closeEditor, categories, accounts, people, refresh } = useData();
+  const { editor, closeEditor, categories, accounts, people, rules, refresh } = useData();
   const { user } = useAuth();
   const toast = useToast();
   const editing = editor.transaction;
@@ -146,6 +149,8 @@ export default function TransactionEditor() {
   const [error, setError] = useState('');
   const [quick, setQuick] = useState('');
   const quickBase = useRef(null);
+  // The category quick entry suggested: choosing another one teaches it.
+  const suggestedCategory = useRef(null);
 
   useEffect(() => {
     if (!editor.open) return;
@@ -153,6 +158,7 @@ export default function TransactionEditor() {
     setError('');
     setQuick('');
     quickBase.current = null;
+    suggestedCategory.current = null;
     // Only reset when the sheet opens, not when lists refresh behind it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor.open, editing]);
@@ -166,6 +172,7 @@ export default function TransactionEditor() {
     setError('');
     if (!text.trim()) {
       quickBase.current = null;
+      suggestedCategory.current = null;
       return;
     }
     if (!quickBase.current) quickBase.current = form;
@@ -173,11 +180,13 @@ export default function TransactionEditor() {
       categories: categories.filter((c) => c.name !== DEBT_CATEGORY),
       accounts,
       people,
+      rules,
       today: today(),
     });
+    suggestedCategory.current = parsed.categoryId ?? null;
     // "ngutangin budi 50rb" switches the form to a debt with that person.
     const person = parsed.debt ? { personId: parsed.personId ?? null, personName: parsed.personName ?? '' } : {};
-    setForm({ ...quickBase.current, debt: false, repeat: false, ...parsed, ...person });
+    setForm({ ...quickBase.current, debt: false, repeat: false, split: null, ...parsed, ...person });
   };
 
   const set = (patch) => {
@@ -233,9 +242,16 @@ export default function TransactionEditor() {
     setError('');
     try {
       const payload = toPayload(form);
+      // Picked a different category than quick entry suggested: remember it for next time.
+      const overrode = suggestedCategory.current && payload.categoryId && payload.categoryId !== suggestedCategory.current;
+      if (overrode && !editing) payload.learnCategory = true;
       if (editing) {
         await transactionsApi.update(editing.id, payload);
         toast('Transaction updated');
+      } else if (form.split && !isDebt(form) && form.type === 'expense') {
+        const result = await transactionsApi.split({ ...payload, learnCategory: undefined }, form.split);
+        toast(`Split ${form.split.count} ways: you ${formatCurrency(result.yours)}, ${formatCurrency(result.share)} each in Debts`);
+        if (result.budgetAlert) toast(result.budgetAlert.message, { tone: result.budgetAlert.level === 'over' ? 'error' : 'info', duration: 6000 });
       } else if (form.repeat && form.type !== 'transfer' && !isDebt(form)) {
         await recurringApi.create(payload);
         toast(`Saved, and it will repeat every month`);
@@ -339,6 +355,10 @@ export default function TransactionEditor() {
         />
 
         <AmountInput value={form.amount} onChange={(amount) => set({ amount })} type={form.type} autoFocus={!editing && window.innerWidth >= 1024} />
+
+        {form.split && form.type === 'expense' && !debt && (
+          <SplitPanel split={form.split} amount={form.amount} people={people} onRemove={() => set({ split: null })} />
+        )}
 
         <AnimatePresence mode="wait" initial={false}>
           <motion.div

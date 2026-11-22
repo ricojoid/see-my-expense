@@ -1,5 +1,18 @@
 import { http, request } from './client';
 
+/** Downloads a file from an authenticated endpoint and saves it under the server's file name. */
+async function download(path, query, fallbackName) {
+  const res = await request('GET', path, { query, raw: true });
+  const blob = await res.blob();
+  const name = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') || '')?.[1] || fallbackName;
+  const url = URL.createObjectURL(blob);
+  const a = Object.assign(document.createElement('a'), { href: url, download: name });
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 export const authApi = {
   login: (username, password) => request('POST', '/auth/login', { body: { username, password }, auth: false }),
   me: () => http.get('/auth/me'),
@@ -15,18 +28,9 @@ export const transactionsApi = {
   update: (id, payload) => http.put(`/transactions/${id}`, payload),
   remove: (id) => http.del(`/transactions/${id}`),
   import: (csv) => http.post('/transactions/import', { csv }),
-  /** Downloads the CSV through the authenticated API and saves it. */
-  async exportCsv(filters) {
-    const res = await request('GET', '/transactions/export', { query: filters, raw: true });
-    const blob = await res.blob();
-    const name = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') || '')?.[1] || 'transactions.csv';
-    const url = URL.createObjectURL(blob);
-    const a = Object.assign(document.createElement('a'), { href: url, download: name });
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  },
+  /** { transaction, split: { count, people } }: your share plus each person's, all at once. */
+  split: (transaction, split) => http.post('/transactions/split', { transaction, split }),
+  exportCsv: (filters) => download('/transactions/export', filters, 'transactions.csv'),
 };
 
 export const categoriesApi = {
@@ -34,6 +38,23 @@ export const categoriesApi = {
   create: (payload) => http.post('/categories', payload),
   update: (id, payload) => http.put(`/categories/${id}`, payload),
   remove: (id) => http.del(`/categories/${id}`),
+  /** Keywords learned from corrections, for quick entry. */
+  rules: () => http.get('/categories/rules'),
+};
+
+export const insightsApi = {
+  projection: () => http.get('/insights/projection'),
+  subscriptions: () => http.get('/insights/subscriptions'),
+  downloadReport: (month) => download('/insights/report', { month }, `see-my-expense-${month}.pdf`),
+};
+
+export const goalsApi = {
+  list: () => http.get('/goals'),
+  create: (goal) => http.post('/goals', goal),
+  update: (id, goal) => http.put(`/goals/${id}`, goal),
+  remove: (id) => http.del(`/goals/${id}`),
+  contribute: (id, payload) => http.post(`/goals/${id}/contributions`, payload),
+  history: (id) => http.get(`/goals/${id}/contributions`),
 };
 
 export const accountsApi = {

@@ -15,6 +15,7 @@ import BudgetList from '../insights/BudgetList';
 import SpendingCard from './SpendingCard';
 import WeeklyRecap from './WeeklyRecap';
 import UpcomingBills from './UpcomingBills';
+import GoalsCard from './GoalsCard';
 
 export default function HomePage({ onNavigate }) {
   const { user } = useAuth();
@@ -92,6 +93,8 @@ export default function HomePage({ onNavigate }) {
               <p className="text-sm text-ink-3">Set a monthly limit for categories like food or shopping and see how you are doing at a glance.</p>
             )}
           </Card>
+
+          <GoalsCard onNavigate={onNavigate} />
         </div>
       </div>
     </>

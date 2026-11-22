@@ -16,18 +16,20 @@ export function DataProvider({ children }) {
   const [categories, setCategories] = useState([]);
   const [accounts, setAccounts] = useState([]);
   const [people, setPeople] = useState([]);
+  const [rules, setRules] = useState([]);
   const [editor, setEditor] = useState({ open: false, transaction: null, preset: null });
 
   const refresh = useCallback(() => setVersion((v) => v + 1), []);
 
   useEffect(() => {
     let alive = true;
-    Promise.all([categoriesApi.list(), accountsApi.list(), peopleApi.list()])
-      .then(([cats, accs, ppl]) => {
+    Promise.all([categoriesApi.list(), accountsApi.list(), peopleApi.list(), categoriesApi.rules()])
+      .then(([cats, accs, ppl, learned]) => {
         if (!alive) return;
         setCategories(cats);
         setAccounts(accs);
         setPeople(ppl);
+        setRules(learned);
       })
       .catch(() => {});
     return () => {
@@ -42,8 +44,8 @@ export function DataProvider({ children }) {
   const closeEditor = useCallback(() => setEditor((e) => ({ ...e, open: false })), []);
 
   const value = useMemo(
-    () => ({ month, setMonth, version, refresh, categories, accounts, people, editor, openEditor, closeEditor }),
-    [month, version, refresh, categories, accounts, people, editor, openEditor, closeEditor]
+    () => ({ month, setMonth, version, refresh, categories, accounts, people, rules, editor, openEditor, closeEditor }),
+    [month, version, refresh, categories, accounts, people, rules, editor, openEditor, closeEditor]
   );
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
 }

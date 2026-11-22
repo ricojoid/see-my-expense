@@ -8,3 +8,5 @@
 !**/.env.example
 server/test
 *.md
+e2e
+.github

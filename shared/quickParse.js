@@ -4,9 +4,13 @@
  * Turns a quick note like "kopi 25k gopay kemarin" into transaction fields.
  * Pure: everything it needs comes in, so it is easy to test.
  *
- *   parseQuick(text, { categories, accounts, people, today })
- *     -> { type?, amount?, categoryId?, accountId?, occurredOn?, description,
- *          debt?, personId?, personName? }
+ *   parseQuick(text, { categories, accounts, people, rules, today })
+ *     -> { type?, amount?, categoryId?, categoryFallback?, accountId?, occurredOn?,
+ *          description, debt?, personId?, personName?, split? }
+ *
+ * `rules` are keywords the user taught ({ keyword, categoryId }); they win.
+ * Split bills ("makan 300k bagi 3 sama budi sari") come back with
+ * split: { count, people: [{ personId } | { personName }] }.
  *
  * Debts ("ngutangin budi 50rb", "budi udah balikin 50rb") come back with
  * debt: true and the person: a known one by id (names match in any case),
@@ -31,16 +35,20 @@ const MULTIPLIERS = { k: 1e3, rb: 1e3, ribu: 1e3, jt: 1e6, juta: 1e6 };
 // "25k", "35rb", "1,5jt", "25.000", "25000", "2.5 juta"
 const AMOUNT_RE = /(?:^|\s)(?:rp\.?\s*)?(\d{1,3}(?:\.\d{3})+|\d+(?:[.,]\d+)?)\s*(k|rb|ribu|jt|juta)?(?=\s|$)/i;
 
+/**
+ * The amount in the text. A number with a unit ("400k") or clearly money
+ * ("25.000", "150000") beats a small bare one ("split 4 ..."), which is only
+ * used when nothing better is there ("kopi 25" = 25 thousand).
+ */
 function readAmount(text) {
-  const m = AMOUNT_RE.exec(text);
-  if (!m) return null;
-  const [token, digits, unit] = m;
-  let value;
-  if (/^\d{1,3}(\.\d{3})+$/.test(digits) && !unit) value = Number(digits.replace(/\./g, ''));
-  else value = Number(digits.replace(',', '.'));
-  if (unit) value *= MULTIPLIERS[unit.toLowerCase()];
-  else if (value < 1000) value *= 1000; // "kopi 25" means 25 thousand
-  return { amount: Math.round(value), token: token.trim() };
+  const all = [...text.matchAll(new RegExp(AMOUNT_RE.source, 'gi'))].map(([token, digits, unit]) => {
+    const dotted = /^\d{1,3}(\.\d{3})+$/.test(digits) && !unit;
+    let value = dotted ? Number(digits.replace(/\./g, '')) : Number(digits.replace(',', '.'));
+    if (unit) value *= MULTIPLIERS[unit.toLowerCase()];
+    const clear = Boolean(unit) || dotted || value >= 1000;
+    return { amount: Math.round(clear ? value : value * 1000), token: token.trim(), clear };
+  });
+  return all.find((a) => a.clear) || all[0] || null;
 }
 
 const DAY_NAMES = [
@@ -255,7 +263,22 @@ function findAccount(text, accounts) {
   return accounts.find((a) => words(a.name).some((w) => !GENERIC_ACCOUNT_WORDS.has(w) && w.length >= 3 && tokens.has(w)));
 }
 
-function findCategory(text, categories) {
+/** A keyword the user taught by correcting a category ("indomaret" -> Groceries); longest first. */
+function findByRule(text, categories, rules) {
+  const lower = text.toLowerCase();
+  const sorted = [...rules].sort((a, b) => b.keyword.length - a.keyword.length);
+  for (const rule of sorted) {
+    if (!new RegExp(String.raw`\b` + escapeRe(rule.keyword.toLowerCase()) + String.raw`\b`).test(lower)) continue;
+    const category = categories.find((c) => c.id === rule.categoryId);
+    if (category) return category;
+  }
+  return null;
+}
+
+function findCategory(text, categories, rules = []) {
+  // 0. What the user taught us.
+  const learned = findByRule(text, categories, rules);
+  if (learned) return learned;
   const tokens = new Set(words(text));
   // 1. The category's own name ("transport 15k").
   const direct = categories.find((c) => words(c.name).some((w) => w.length >= 4 && tokens.has(w)));
@@ -269,43 +292,93 @@ function findCategory(text, categories) {
   return null;
 }
 
-export function parseQuick(text, { categories = [], accounts = [], people = [], today }) {
+/** The category a piece of text points to, or null (no "Other" fallback). For queries like "/spent makan". */
+export function matchCategory(text, categories, rules = []) {
+  return findCategory(` ${text} `, categories, rules);
+}
+
+// ---- Split bills: "makan 300k bagi 3 sama budi sari" ----
+
+const SPLIT_RE = re(String.raw`\b(?:bagi|dibagi|split|patungan|bagi\s*rata)(?:\s+(\d{1,2}))?(?:\s*(?:orang|org|ways?))?\b`);
+const WITH_RE = re(String.raw`\b(?:sama|ama|sm|with|dengan|bareng)\s+(.+)$`);
+
+function personFor(name, people) {
+  const known = people.find((p) => p.name.toLowerCase() === name);
+  return known ? { personId: known.id } : { personName: titleCase(name) };
+}
+
+/** { count, people: [...], remove: [phrases] } or null. Needs at least one name. */
+function readSplit(text, people) {
+  const lower = text.toLowerCase();
+  const split = SPLIT_RE.exec(lower);
+  if (!split) return null;
+  const withPart = WITH_RE.exec(lower.slice(split.index));
+  if (!withPart) return null;
+  const names = withPart[1]
+    .split(/[\s,&]+|\bdan\b|\band\b/)
+    .map((n) => n.trim())
+    .filter((n) => /^[a-z][a-z0-9'.-]*$/.test(n) && !NOT_A_NAME.has(n) && n !== 'dan' && n !== 'and');
+  if (!names.length) return null;
+  const unique = [...new Set(names)];
+  const count = Math.max(Number(split[1]) || 0, unique.length + 1);
+  return { count, people: unique.map((n) => personFor(n, people)), remove: [split[0], withPart[0]] };
+}
+
+/** Even shares; your share takes the rounding. */
+export function splitShares(amount, count) {
+  const share = Math.floor(amount / count);
+  return { share, yours: amount - share * (count - 1) };
+}
+
+export function parseQuick(text, { categories = [], accounts = [], people = [], rules = [], today }) {
   const result = {};
   let rest = ` ${text.trim()} `;
   if (!rest.trim()) return result;
+  const removePhrase = (phrase) => {
+    rest = rest.replace(new RegExp(escapeRe(phrase), 'i'), ' ');
+  };
 
   const date = readDate(rest, today);
   if (date) {
     result.occurredOn = date.date;
-    rest = rest.replace(new RegExp(escapeRe(date.phrase), 'i'), ' ');
+    removePhrase(date.phrase);
   }
 
   const amount = readAmount(rest);
   if (amount) {
     result.amount = amount.amount;
-    rest = rest.replace(amount.token, ' ');
+    removePhrase(amount.token);
   }
 
-  const debt = readDebt(rest, people);
+  // Accounts first, so "... sama budi gopay" doesn't take GoPay for a person.
+  const account = findAccount(rest, accounts);
+  if (account) {
+    result.accountId = account.id;
+    for (const w of words(account.name)) rest = rest.replace(new RegExp(String.raw`\b${w}\b`, 'i'), ' ');
+  }
+
+  const split = readSplit(rest, people);
+  const debt = !split && readDebt(rest, people);
+  if (split) {
+    for (const phrase of split.remove) removePhrase(phrase);
+    result.split = { count: split.count, people: split.people };
+  }
+
   if (debt) {
     result.type = debt.type;
     result.debt = true;
     if (debt.person.id) result.personId = debt.person.id;
     else result.personName = debt.person.name;
-    for (const phrase of debt.remove) rest = rest.replace(new RegExp(escapeRe(phrase), 'i'), ' ');
+    for (const phrase of debt.remove) removePhrase(phrase);
   } else {
-    const type = INCOME_WORDS.test(rest) ? 'income' : 'expense';
+    const type = !split && INCOME_WORDS.test(rest) ? 'income' : 'expense';
     result.type = type;
-    // Unsure? File it under "Other ..." rather than guessing.
+    // Unsure? File it under "Other ..." rather than guessing, and say so.
     const ofType = categories.filter((c) => c.type === type);
-    const category = findCategory(rest, ofType) || ofType.find((c) => OTHER_CATEGORY.test(c.name));
+    const found = findCategory(rest, ofType, rules);
+    const category = found || ofType.find((c) => OTHER_CATEGORY.test(c.name));
     if (category) result.categoryId = category.id;
-  }
-
-  const account = findAccount(rest, accounts);
-  if (account) {
-    result.accountId = account.id;
-    for (const w of words(account.name)) rest = rest.replace(new RegExp(`\\b${w}\\b`, 'i'), ' ');
+    if (category && !found) result.categoryFallback = true;
   }
 
   const description = rest.replace(/\s+/g, ' ').trim();

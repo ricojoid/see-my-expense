@@ -2,6 +2,7 @@ const express = require('express');
 const transactions = require('../services/transactions.service');
 const recurring = require('../services/recurring.service');
 const notifications = require('../services/notifications.service');
+const rules = require('../services/rules.service');
 const { idParam, monthQuery } = require('../middleware/params');
 const { isValidMonth } = require('../lib/dates');
 const { validateTransaction } = require('../lib/validate');
@@ -73,20 +74,44 @@ router.post(
   })
 );
 
-/** A new expense may cross a budget line: the alert rides along with the created transaction. */
+/**
+ * A new expense may cross a budget line: the alert rides along with the created
+ * transaction. `learnCategory: true` (the user overrode the suggested category)
+ * teaches the parser that this note belongs in that category.
+ */
 router.post(
   '/',
   asyncHandler(async (req, res) => {
     const tx = await transactions.create(req.user.id, readBody(req.body));
+    if (req.body.learnCategory === true && !tx.personId) await rules.learn(req.user.id, tx.description, tx.categoryId).catch(() => null);
     const budgetAlert = await notifications.checkBudget(req.user.id, tx).catch(() => null);
     res.status(201).json({ ...tx, budgetAlert });
   })
 );
 
+/** A bill paid for several people: { transaction, split: { count, people } }. */
+router.post(
+  '/split',
+  asyncHandler(async (req, res) => {
+    const tx = readBody(req.body?.transaction);
+    const result = await transactions.createSplit(req.user.id, tx, req.body?.split || {});
+    const budgetAlert = await notifications.checkBudget(req.user.id, result.transactions[0]).catch(() => null);
+    res.status(201).json({ ...result, budgetAlert });
+  })
+);
+
+/** Moving a transaction to another category teaches the parser that its note belongs there. */
 router.put(
   '/:id',
   idParam,
-  asyncHandler(async (req, res) => res.json(await transactions.update(req.user.id, req.id, readBody(req.body))))
+  asyncHandler(async (req, res) => {
+    const before = await transactions.findById(req.user.id, req.id);
+    const tx = await transactions.update(req.user.id, req.id, readBody(req.body));
+    if (tx.categoryId && tx.categoryId !== before.categoryId && !tx.personId) {
+      await rules.learn(req.user.id, tx.description, tx.categoryId).catch(() => null);
+    }
+    res.json(tx);
+  })
 );
 
 router.delete(

@@ -11,8 +11,15 @@ monthly budgets, recurring bills, insights and multi-user accounts.
 
 - **Quick entry:** type `kopi 25k gopay kemarin` or `10 november lupa bayar makan 35k` and the amount,
   category, account and date fill in. Debts too: `ngutangin budi 50rb`, `budi udah balikin 20rb`
-- **Telegram bot:** send the same sentences to your bot and they're recorded, with Undo, `/today`,
-  `/week`, `/month`, and reminders / alerts in the chat
+- **Split bills:** `makan 300k bagi 3 sama budi sari`: your share is the expense, the rest goes to
+  each person's debt
+- **Learns from you:** move "Indomaret" to Groceries once and it goes there from then on
+- **Telegram bot:** send the same sentences (several lines at once is fine), reply to the bot to
+  fix one (`30k`, `kemarin`, `food`, `hapus`), ask `/spent makan bulan ini`, `/debts`, `/budi`,
+  `/goals`, save with `nabung laptop 500k`, and get a PDF report every month
+- **Savings goals** with how much to put aside each month
+- **Month-end projection** and **subscription detection** (offered as recurring rules)
+- **Monthly PDF report**, downloadable from Insights
 - **Works offline:** the app opens without a connection, and new transactions are saved on the device
   and synced when you're back online
 - **Notifications:** a daily reminder (only if you haven't logged anything), budget alerts at 80% and
@@ -61,6 +68,8 @@ client/
     components/charts/   trend chart, category bars
     features/            one folder per screen (home, activity, debts, insights, settings, auth, transactions)
 shared/                  pure code used by both (quick-entry parser + tests)
+e2e/                     browser tests (Playwright)
+.github/workflows/ci.yml unit tests, build, and browser tests against SQL Server on every push
 docker-compose.yml       API + web (an optional SQL Server in docker-compose.db.yml)
 ```
 
@@ -126,6 +135,10 @@ See [ROADMAP.md](ROADMAP.md) for ideas not built yet.
 ```bash
 cd server && npm test        # API helpers
 cd client && npm test        # quick-entry parser (shared/)
+
+# Browser tests against a running app (API + web on :5173); creates and deletes a test user
+cd e2e && npm ci && npx playwright install chromium
+E2E_ADMIN_PASSWORD=... npx playwright test     # PW_CHANNEL=chrome to use your installed Chrome
 ```
 
 ## API

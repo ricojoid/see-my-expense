@@ -7,7 +7,16 @@ import Skeleton from '../../components/ui/Skeleton';
 import ToggleRow from '../../components/ui/ToggleRow';
 
 const LINK_FRESH_MS = 9 * 60 * 1000; // links expire after 10 minutes on the server
-const EXAMPLES = ['kopi 25k', 'grab 22k kemarin', 'gaji 8jt bca', 'ngutangin budi 50rb', 'budi udah balikin 50rb'];
+const EXAMPLES = [
+  'kopi 25k',
+  'grab 22k kemarin',
+  'gaji 8jt bca',
+  'ngutangin budi 50rb',
+  'budi udah balikin 50rb',
+  'makan 300k bagi 3 sama budi sari',
+  'nabung laptop 500k',
+  '/spent makan bulan ini',
+];
 
 /** Connect a Telegram chat, then record transactions by just sending messages to the bot. */
 export default function TelegramSection() {
@@ -15,7 +24,7 @@ export default function TelegramSection() {
   const [status, setStatus] = useState(null);
   const [link, setLink] = useState(null); // { url, at }
   const [waiting, setWaiting] = useState(false);
-  const [telegramNotify, setTelegramNotify] = useState(true);
+  const [prefs, setPrefs] = useState({ telegramNotify: true, monthlyReport: true });
   const [busy, setBusy] = useState(false);
   const alive = useRef(true);
 
@@ -30,7 +39,10 @@ export default function TelegramSection() {
 
   useEffect(() => {
     alive.current = true;
-    Promise.all([load(), notificationsApi.get().then((n) => setTelegramNotify(n.settings.telegramNotify))]).catch((err) =>
+    Promise.all([
+      load(),
+      notificationsApi.get().then((n) => setPrefs({ telegramNotify: n.settings.telegramNotify, monthlyReport: n.settings.monthlyReport })),
+    ]).catch((err) =>
       toast(err.message, { tone: 'error' })
     );
     return () => {
@@ -86,12 +98,12 @@ export default function TelegramSection() {
     }
   };
 
-  const toggleNotify = async (on) => {
-    setTelegramNotify(on);
+  const toggle = (key) => async (on) => {
+    setPrefs((p) => ({ ...p, [key]: on }));
     try {
-      await notificationsApi.update({ telegramNotify: on });
+      await notificationsApi.update({ [key]: on });
     } catch (err) {
-      setTelegramNotify(!on);
+      setPrefs((p) => ({ ...p, [key]: !on }));
       toast(err.message, { tone: 'error' });
     }
   };
@@ -132,8 +144,15 @@ export default function TelegramSection() {
             icon="🔔"
             title="Reminders and alerts on Telegram"
             hint="Daily reminder, budget alerts and the weekly summary (as set in Notifications)"
-            checked={telegramNotify}
-            onChange={toggleNotify}
+            checked={prefs.telegramNotify}
+            onChange={toggle('telegramNotify')}
+          />
+          <ToggleRow
+            icon="📊"
+            title="Monthly PDF report"
+            hint="Last month's report on the 1st, at 08:00. Or send /report any time."
+            checked={prefs.monthlyReport}
+            onChange={toggle('monthlyReport')}
           />
           <Button size="sm" variant="ghost" loading={busy} onClick={disconnect}>
             Disconnect Telegram

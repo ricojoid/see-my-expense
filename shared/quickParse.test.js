@@ -151,3 +151,38 @@ test('dates by month name and "tgl"', () => {
   assert.equal(parse('makan 20k 31 februari').occurredOn, undefined);
   assert.equal(parse('kopi 25 mei').amount, undefined); // "25 mei" is a date, not an amount
 });
+
+test('split bills: your share is an expense, the rest is owed by each person', () => {
+  const r = debt('makan 300k bagi 3 sama budi sari');
+  assert.equal(r.amount, 300000);
+  assert.equal(r.type, 'expense');
+  assert.equal(r.categoryId, 1);
+  assert.deepEqual(r.split, { count: 3, people: [{ personId: 20 }, { personName: 'Sari' }] });
+  assert.equal(r.description, 'Makan');
+  assert.equal(r.debt, undefined);
+  // count from the names when not given, accounts aren't people, "dan" / commas
+  assert.deepEqual(debt('patungan pizza 200k sama budi dan andi gopay').split, { count: 3, people: [{ personId: 20 }, { personName: 'Andi' }] });
+  assert.equal(debt('patungan pizza 200k sama budi dan andi gopay').accountId, 11);
+  assert.deepEqual(debt('split 4 dinner 400k with budi, andi').split.count, 4);
+  assert.equal(debt('bagi dua kue 50k').split, undefined); // nobody named
+});
+
+test('splitShares gives you the rounding', async () => {
+  const { splitShares } = await import('./quickParse.js');
+  assert.deepEqual(splitShares(100000, 3), { share: 33333, yours: 33334 });
+  assert.deepEqual(splitShares(300000, 3), { share: 100000, yours: 100000 });
+});
+
+test('learned rules win, and fallbacks are flagged', () => {
+  const rules = [{ keyword: 'indomaret', categoryId: 1 }, { keyword: 'es kopi susu', categoryId: 4 }];
+  assert.equal(parseQuick('indomaret 30k', { ...ctx, rules }).categoryId, 1);
+  assert.equal(parseQuick('es kopi susu 20k', { ...ctx, rules }).categoryId, 4);
+  assert.equal(parse('sesuatu 10k').categoryFallback, true);
+  assert.equal(parse('kopi 10k').categoryFallback, undefined);
+});
+
+test('matchCategory finds a category without falling back', async () => {
+  const { matchCategory } = await import('./quickParse.js');
+  assert.equal(matchCategory('makan', categories.filter((c) => c.type === 'expense')).id, 1);
+  assert.equal(matchCategory('blah', categories.filter((c) => c.type === 'expense')), null);
+});
