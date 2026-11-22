@@ -1,0 +1,34 @@
+# Optional: run a SQL Server for the app, for hosts that don't have one.
+# Enable it by adding this line to .env:
+#
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.db.yml
+#
+# and set DB_SERVER=db and DB_PASSWORD (it becomes the "sa" password, which must be
+# 8+ characters with upper case, lower case, digits and/or symbols).
+# Needs an x86-64 host and about 2 GB of RAM.
+
+services:
+  db:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    restart: unless-stopped
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: Express
+      MSSQL_SA_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+      TZ: Asia/Jakarta
+    volumes:
+      - mssql-data:/var/opt/mssql
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q 'SELECT 1' -b -o /dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+
+  api:
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  mssql-data:

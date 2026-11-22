@@ -55,16 +55,24 @@ docker-compose.yml       SQL Server + API + web
 
 ## Run with Docker (server deployment)
 
-Requires Docker with Compose v2 on an x86-64 host (the SQL Server image has no ARM build).
+Requires Docker with Compose v2.
 
 ```bash
-cp .env.example .env        # fill in MSSQL_SA_PASSWORD, JWT_SECRET, ADMIN_PASSWORD
+cp .env.example .env        # fill in DB_PASSWORD, JWT_SECRET, ADMIN_PASSWORD (and APP_PORT)
 docker compose up -d --build
+docker compose logs -f api  # wait for: database "expense_tracker" is ready
 ```
 
-Open `http://<server>:8080` and sign in with `ADMIN_USERNAME` / `ADMIN_PASSWORD`.
-The database lives in the `mssql-data` volume, and the API migrates it on every start.
+Open `http://<server>:<APP_PORT>` and sign in with `ADMIN_USERNAME` / `ADMIN_PASSWORD`.
+The API creates and migrates its database on every start.
 Put HTTPS in front (Caddy, nginx, Cloudflare Tunnel...) before exposing it to the internet.
+
+**Database.** By default the app uses an existing SQL Server: `DB_SERVER=host.docker.internal`
+reaches one published on the Docker host (for example a `mssql/server` container with
+`0.0.0.0:1433->1433`). The login needs permission to create a database the first time
+(`sa` has it). No SQL Server yet? Uncomment `COMPOSE_FILE=docker-compose.yml:docker-compose.db.yml`
+in `.env` and set `DB_SERVER=db`: compose then runs one too (x86-64 host, about 2 GB of RAM,
+data in the `mssql-data` volume).
 
 ## Run locally (Windows, SQL Server Express)
 
