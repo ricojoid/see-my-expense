@@ -1,0 +1,40 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background-color: #0a0e0a;
+  background-image:
+    linear-gradient(rgba(57, 255, 20, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(57, 255, 20, 0.04) 1px, transparent 1px);
+  background-size: 24px 24px;
+  color: #39ff14;
+  font-family: 'Fira Code', 'Courier New', monospace;
+}
+
+::selection {
+  background: #39ff14;
+  color: #0a0e0a;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+}
+::-webkit-scrollbar-track {
+  background: #0d1410;
+}
+::-webkit-scrollbar-thumb {
+  background: #1f3a26;
+  border: 1px solid #39ff14;
+}
+
+input[type='date']::-webkit-calendar-picker-indicator {
+  filter: invert(62%) sepia(78%) saturate(4000%) hue-rotate(75deg) brightness(1.1);
+  cursor: pointer;
+}
