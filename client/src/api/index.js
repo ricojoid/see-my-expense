@@ -10,6 +10,7 @@ export const transactionsApi = {
   list: (filters) => http.get('/transactions', filters),
   summary: (month) => http.get('/transactions/summary', { month }),
   stats: (month) => http.get('/transactions/stats', { month }),
+  weekly: () => http.get('/transactions/weekly'),
   create: (payload) => http.post('/transactions', payload),
   update: (id, payload) => http.put(`/transactions/${id}`, payload),
   remove: (id) => http.del(`/transactions/${id}`),
@@ -48,6 +49,14 @@ export const peopleApi = {
   remove: (id) => http.del(`/people/${id}`),
 };
 
+export const notificationsApi = {
+  get: () => http.get('/notifications'),
+  update: (settings) => http.put('/notifications', settings),
+  subscribe: (subscription) => http.post('/notifications/subscriptions', { subscription }),
+  unsubscribe: (endpoint) => http.del('/notifications/subscriptions', { endpoint }),
+  test: () => http.post('/notifications/test'),
+};
+
 export const budgetsApi = {
   list: (month) => http.get('/budgets', { month }),
   set: (categoryId, amount) => http.put(`/budgets/${categoryId}`, { amount }),
@@ -55,6 +64,7 @@ export const budgetsApi = {
 
 export const recurringApi = {
   list: () => http.get('/recurring'),
+  upcoming: () => http.get('/recurring/upcoming'),
   create: (payload) => http.post('/recurring', payload),
   setActive: (id, active) => http.patch(`/recurring/${id}`, { active }),
   remove: (id) => http.del(`/recurring/${id}`),

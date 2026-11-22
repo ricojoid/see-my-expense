@@ -57,8 +57,38 @@ function dueRuns(nextRunOn, dayOfMonth, today, limit = 120) {
   return { dates, next };
 }
 
+/** 'YYYY-MM-DD' plus `days` (may be negative). */
+function addDays(date, days) {
+  const [y, m, d] = date.split('-').map(Number);
+  return formatDate(new Date(y, m - 1, d + days));
+}
+
+/** Day of week for 'YYYY-MM-DD': 0 = Monday ... 6 = Sunday. */
+function weekday(date) {
+  const [y, m, d] = date.split('-').map(Number);
+  return (new Date(y, m - 1, d).getDay() + 6) % 7;
+}
+
+/**
+ * The last full Monday-Sunday week before `today`, and the one before it,
+ * as half-open ranges: { start, end, previousStart }.
+ */
+function lastWeek(today) {
+  const end = addDays(today, -weekday(today)); // this week's Monday
+  return { start: addDays(end, -7), end, previousStart: addDays(end, -14) };
+}
+
+/** 'HH:MM' in the server's local timezone. */
+function timeLocal(now = new Date()) {
+  return `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+}
+
 module.exports = {
   formatDate,
+  addDays,
+  weekday,
+  lastWeek,
+  timeLocal,
   todayLocal,
   isValidDate,
   isValidMonth,

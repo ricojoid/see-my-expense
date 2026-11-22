@@ -289,6 +289,46 @@ async function ensureBudgets(h) {
   log('created table budgets');
 }
 
+/** Push notifications: app-wide keys, per-device subscriptions, per-user preferences. */
+async function ensureNotifications(h) {
+  if (!(await h.tableExists('app_settings'))) {
+    await h.q(`
+      CREATE TABLE app_settings (
+        name VARCHAR(50) NOT NULL PRIMARY KEY,
+        value NVARCHAR(MAX) NOT NULL
+      );
+    `);
+    log('created table app_settings');
+  }
+  if (!(await h.tableExists('push_subscriptions'))) {
+    await h.q(`
+      CREATE TABLE push_subscriptions (
+        id INT IDENTITY(1,1) PRIMARY KEY,
+        user_id INT NOT NULL CONSTRAINT FK_push_user REFERENCES users(id),
+        endpoint VARCHAR(800) NOT NULL CONSTRAINT UQ_push_endpoint UNIQUE,
+        p256dh VARCHAR(200) NOT NULL,
+        auth VARCHAR(100) NOT NULL,
+        created_at DATETIME2 NOT NULL DEFAULT SYSDATETIME()
+      );
+    `);
+    log('created table push_subscriptions');
+  }
+  if (!(await h.tableExists('user_settings'))) {
+    await h.q(`
+      CREATE TABLE user_settings (
+        user_id INT NOT NULL PRIMARY KEY CONSTRAINT FK_user_settings_user REFERENCES users(id),
+        reminder_enabled BIT NOT NULL DEFAULT 0,
+        reminder_time CHAR(5) NOT NULL DEFAULT '21:00',
+        budget_alerts BIT NOT NULL DEFAULT 1,
+        weekly_summary BIT NOT NULL DEFAULT 1,
+        last_reminder_on DATE NULL,
+        last_weekly_on DATE NULL
+      );
+    `);
+    log('created table user_settings');
+  }
+}
+
 async function main() {
   log(`connecting to ${server} (${useSqlAuth ? 'SQL auth' : 'Windows auth'})...`);
   await ensureDatabase();
@@ -303,6 +343,7 @@ async function main() {
     await ensurePeople(h);
     await ensureTransactions(h, adminId);
     await ensureBudgets(h);
+    await ensureNotifications(h);
 
     const cats = await h.q(`SELECT COUNT(*) AS n FROM categories WHERE user_id = ${adminId}`);
     if (cats.recordset[0].n === 0) {

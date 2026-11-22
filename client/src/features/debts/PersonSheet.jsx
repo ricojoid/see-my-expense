@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { peopleApi, transactionsApi } from '../../api';
 import { useData } from '../../context/DataContext';
@@ -30,7 +30,11 @@ function History({ personId }) {
 }
 
 /** One person's debt: balance, settle, add more, history, rename / remove. */
-export default function PersonSheet({ person, onClose }) {
+export default function PersonSheet({ person: current, onClose }) {
+  // Keep showing the last person while the sheet animates closed.
+  const last = useRef(current);
+  if (current) last.current = current;
+  const person = current || last.current;
   const money = useMoney();
   const { openEditor, refresh } = useData();
   const toast = useToast();
@@ -42,7 +46,7 @@ export default function PersonSheet({ person, onClose }) {
     setRenaming(false);
   }, [person?.id]);
 
-  if (!person) return <Sheet open={false} onClose={onClose} />;
+  if (!person) return null;
 
   const { tone, text } = describeBalance(person, money);
   const labels = actionLabels(person.balance);
@@ -69,7 +73,7 @@ export default function PersonSheet({ person, onClose }) {
   };
 
   return (
-    <Sheet open onClose={onClose} title={person.name}>
+    <Sheet open={Boolean(current)} onClose={onClose} title={person.name}>
       <div className="space-y-5">
         <div className="rounded-3xl border border-line bg-surface-2/60 p-5 text-center">
           <div className={`tabular text-3xl font-extrabold ${TONE_CLASS[tone]}`}>{money(Math.abs(person.balance))}</div>

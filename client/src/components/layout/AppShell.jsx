@@ -4,6 +4,7 @@ import { useData } from '../../context/DataContext';
 import { Wordmark } from '../ui/Logo';
 import Icon from '../ui/Icon';
 import Aurora from './Aurora';
+import SyncBanner from './SyncBanner';
 import { NAV_ITEMS } from './nav';
 
 function Sidebar({ page, onNavigate }) {
@@ -120,7 +121,10 @@ export default function AppShell({ page, onNavigate, children }) {
       <Aurora />
       <Sidebar page={page} onNavigate={onNavigate} />
       <main className="min-w-0 flex-1 overflow-x-clip pb-32 pt-safe lg:pb-12">
-        <div className="mx-auto w-full max-w-5xl px-4 sm:px-6 lg:px-10">{children}</div>
+        <div className="mx-auto w-full max-w-5xl px-4 sm:px-6 lg:px-10">
+          <SyncBanner />
+          {children}
+        </div>
       </main>
       <BottomNav page={page} onNavigate={onNavigate} />
     </div>

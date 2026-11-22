@@ -8,6 +8,15 @@ const router = express.Router();
 
 router.get('/', asyncHandler(async (req, res) => res.json(await recurring.list(req.user.id))));
 
+/** Bills and income still to come this month (rules due today are booked first). */
+router.get(
+  '/upcoming',
+  asyncHandler(async (req, res) => {
+    await recurring.materialize(req.user.id);
+    res.json(await recurring.upcoming(req.user.id));
+  })
+);
+
 router.post(
   '/',
   asyncHandler(async (req, res) => {

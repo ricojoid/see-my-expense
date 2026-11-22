@@ -6,7 +6,16 @@ const { seedUserDefaults } = require('./seed.service');
 
 const ROLES = ['admin', 'user'];
 // Children first, so foreign keys never block the delete.
-const USER_OWNED_TABLES = ['transactions', 'recurring_transactions', 'budgets', 'categories', 'accounts', 'people'];
+const USER_OWNED_TABLES = [
+  'transactions',
+  'recurring_transactions',
+  'budgets',
+  'categories',
+  'accounts',
+  'people',
+  'push_subscriptions',
+  'user_settings',
+];
 
 async function list() {
   const pool = await getPool();

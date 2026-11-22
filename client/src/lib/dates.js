@@ -58,3 +58,10 @@ export function daysElapsed(month) {
   const [y, m] = month.split('-').map(Number);
   return new Date(y, m, 0).getDate();
 }
+
+/** 'YYYY-MM-DD' plus `days` (may be negative), in local time. */
+export function addDays(dateString, days) {
+  const d = parse(dateString);
+  d.setDate(d.getDate() + days);
+  return toDateString(d);
+}

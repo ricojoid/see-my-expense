@@ -6,6 +6,8 @@ import { ToastProvider } from './context/ToastContext';
 import { NavigationContext } from './context/NavigationContext';
 import { PrivacyProvider } from './context/PrivacyContext';
 import AppShell from './components/layout/AppShell';
+import ErrorBoundary from './components/layout/ErrorBoundary';
+import LaunchActions from './components/layout/LaunchActions';
 import Logo from './components/ui/Logo';
 import LoginPage from './features/auth/LoginPage';
 import HomePage from './features/home/HomePage';
@@ -14,6 +16,7 @@ import DebtsPage from './features/debts/DebtsPage';
 import InsightsPage from './features/insights/InsightsPage';
 import SettingsPage from './features/settings/SettingsPage';
 import TransactionEditor from './features/transactions/TransactionEditor';
+import AppLockGate from './features/lock/AppLockGate';
 
 const PAGES = {
   home: HomePage,
@@ -68,6 +71,7 @@ function SignedInApp() {
           </AppShell>
         </NavigationContext.Provider>
         <TransactionEditor />
+        <LaunchActions />
       </DataProvider>
     </PrivacyProvider>
   );
@@ -76,17 +80,25 @@ function SignedInApp() {
 function Root() {
   const { status } = useAuth();
   if (status === 'checking') return <Splash />;
-  return status === 'signed-in' ? <SignedInApp /> : <LoginPage />;
+  return status === 'signed-in' ? (
+    <AppLockGate>
+      <SignedInApp />
+    </AppLockGate>
+  ) : (
+    <LoginPage />
+  );
 }
 
 export default function App() {
   return (
-    <MotionConfig reducedMotion="user">
-      <ToastProvider>
-        <AuthProvider>
-          <Root />
-        </AuthProvider>
-      </ToastProvider>
-    </MotionConfig>
+    <ErrorBoundary>
+      <MotionConfig reducedMotion="user">
+        <ToastProvider>
+          <AuthProvider>
+            <Root />
+          </AuthProvider>
+        </ToastProvider>
+      </MotionConfig>
+    </ErrorBoundary>
   );
 }

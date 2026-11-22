@@ -9,6 +9,13 @@ monthly budgets, recurring bills, insights and multi-user accounts.
 
 ## Features
 
+- **Quick entry:** type `kopi 25k gopay kemarin` and the amount, category, account and date fill in
+- **Works offline:** the app opens without a connection, and new transactions are saved on the device
+  and synced when you're back online
+- **Notifications:** a daily reminder (only if you haven't logged anything), budget alerts at 80% and
+  100%, and a weekly summary every Monday
+- **App lock:** a PIN and fingerprint / face unlock on the device
+- **Coming up:** recurring bills still to be paid this month, on the home screen
 - **Fast entry, no dropdowns:** tap chips for type, category (most-used first), account and date; quick `+10k / +50k / +100k` amounts
 - **Spending first:** the home screen shows what you spent this month; income is shown on its own and
   never netted against spending (not every income source has to be tracked)
@@ -66,6 +73,8 @@ docker compose logs -f api  # wait for: database "expense_tracker" is ready
 Open `http://<server>:<APP_PORT>` and sign in with `ADMIN_USERNAME` / `ADMIN_PASSWORD`.
 The API creates and migrates its database on every start.
 Put HTTPS in front (Caddy, nginx, Cloudflare Tunnel...) before exposing it to the internet.
+Notifications, offline mode and fingerprint unlock only work over HTTPS. The push keys (VAPID) are
+generated on first start and kept in the database; set `VAPID_SUBJECT=mailto:you@yourdomain` to use your own contact.
 
 **Database.** By default the app uses an existing SQL Server: `DB_SERVER=host.docker.internal`
 reaches one published on the Docker host (for example a `mssql/server` container with
@@ -96,10 +105,15 @@ and visit `http://<your-pc-ip>:5173`. Use "Add to Home Screen" to install it as 
 Upgrading from v1 (single user)? `npm run setup-db` keeps all existing data and assigns it
 to the first admin account.
 
+## Roadmap
+
+See [ROADMAP.md](ROADMAP.md) for ideas not built yet.
+
 ## Tests
 
 ```bash
 cd server && npm test
+cd client && npm test
 ```
 
 ## API

@@ -8,6 +8,8 @@ import AccountsSection from './AccountsSection';
 import BudgetsSection from './BudgetsSection';
 import RecurringSection from './RecurringSection';
 import PasswordSection from './PasswordSection';
+import NotificationsSection from './NotificationsSection';
+import AppLockSection from './AppLockSection';
 import UsersSection from './UsersSection';
 
 const SECTIONS = [
@@ -15,6 +17,8 @@ const SECTIONS = [
   { key: 'accounts', label: 'Accounts', hint: 'Cash, bank, e-wallets', icon: 'wallet', Component: AccountsSection },
   { key: 'budgets', label: 'Budgets', hint: 'Monthly spending limits', icon: 'target', Component: BudgetsSection },
   { key: 'recurring', label: 'Recurring', hint: 'Bills and salary on autopilot', icon: 'repeat', Component: RecurringSection },
+  { key: 'notifications', label: 'Notifications', hint: 'Reminders, budget alerts, weekly summary', icon: 'bell', Component: NotificationsSection },
+  { key: 'lock', label: 'App lock', hint: 'PIN or fingerprint on this device', icon: 'lock', Component: AppLockSection },
   { key: 'password', label: 'Password', hint: 'Change your password', icon: 'key', Component: PasswordSection },
   { key: 'users', label: 'Users', hint: 'Register and manage accounts', icon: 'users', Component: UsersSection, adminOnly: true },
 ];

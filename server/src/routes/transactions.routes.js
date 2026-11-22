@@ -1,6 +1,7 @@
 const express = require('express');
 const transactions = require('../services/transactions.service');
 const recurring = require('../services/recurring.service');
+const notifications = require('../services/notifications.service');
 const { idParam, monthQuery } = require('../middleware/params');
 const { isValidMonth } = require('../lib/dates');
 const { validateTransaction } = require('../lib/validate');
@@ -47,6 +48,12 @@ router.get(
 );
 
 router.get(
+  '/weekly',
+  bookRecurring,
+  asyncHandler(async (req, res) => res.json(await transactions.weeklyRecap(req.user.id)))
+);
+
+router.get(
   '/export',
   asyncHandler(async (req, res) => {
     const filters = readFilters(req.query);
@@ -66,9 +73,14 @@ router.post(
   })
 );
 
+/** A new expense may cross a budget line: the alert rides along with the created transaction. */
 router.post(
   '/',
-  asyncHandler(async (req, res) => res.status(201).json(await transactions.create(req.user.id, readBody(req.body))))
+  asyncHandler(async (req, res) => {
+    const tx = await transactions.create(req.user.id, readBody(req.body));
+    const budgetAlert = await notifications.checkBudget(req.user.id, tx).catch(() => null);
+    res.status(201).json({ ...tx, budgetAlert });
+  })
 );
 
 router.put(

@@ -1,6 +1,7 @@
 const { sql, getPool, withTransaction } = require('../config/db');
 const { badRequest, notFound } = require('../lib/http');
-const { monthRange, shiftMonth } = require('../lib/dates');
+const { lastWeek, monthRange, shiftMonth, todayLocal } = require('../lib/dates');
+const { percentChange } = require('../lib/format');
 const { parseCsv, toCsv, mapImportRows } = require('../lib/csv');
 const { TX_TYPES, toId } = require('../lib/validate');
 const { assertTransactionRefs } = require('./ownership.service');
@@ -162,6 +163,59 @@ async function stats(userId, month, trendMonths = 6) {
   return { month, expenseByCategory: pick('expense'), incomeByCategory: pick('income'), trend };
 }
 
+/**
+ * Spending in the last full Monday-Sunday week before `today`: total, the week
+ * before for comparison, the top category and the number of expenses.
+ */
+async function weeklyRecap(userId, today = todayLocal()) {
+  const { start, end, previousStart } = lastWeek(today);
+  const pool = await getPool();
+  const result = await pool
+    .request()
+    .input('uid', sql.Int, userId)
+    .input('start', sql.VarChar(10), start)
+    .input('end', sql.VarChar(10), end)
+    .input('prev', sql.VarChar(10), previousStart)
+    .query(`
+      SELECT
+        ISNULL(SUM(CASE WHEN occurred_on >= CAST(@start AS date) THEN amount END), 0) AS total,
+        ISNULL(SUM(CASE WHEN occurred_on < CAST(@start AS date) THEN amount END), 0) AS previousTotal,
+        COUNT(CASE WHEN occurred_on >= CAST(@start AS date) THEN 1 END) AS count
+      FROM transactions
+      WHERE user_id = @uid AND type = 'expense'
+        AND occurred_on >= CAST(@prev AS date) AND occurred_on < CAST(@end AS date);
+
+      SELECT TOP 1 c.name AS category, SUM(t.amount) AS total
+      FROM transactions t JOIN categories c ON c.id = t.category_id
+      WHERE t.user_id = @uid AND t.type = 'expense'
+        AND t.occurred_on >= CAST(@start AS date) AND t.occurred_on < CAST(@end AS date)
+      GROUP BY c.name
+      ORDER BY SUM(t.amount) DESC;
+    `);
+  const [totals, top] = result.recordsets;
+  const total = Number(totals[0].total);
+  const previousTotal = Number(totals[0].previousTotal);
+  return {
+    start,
+    end,
+    total,
+    previousTotal,
+    changePct: percentChange(total, previousTotal),
+    count: totals[0].count,
+    topCategory: top[0] ? { name: top[0].category, total: Number(top[0].total) } : null,
+  };
+}
+
+async function countOn(userId, date) {
+  const pool = await getPool();
+  const r = await pool
+    .request()
+    .input('uid', sql.Int, userId)
+    .input('date', sql.VarChar(10), date)
+    .query('SELECT COUNT(*) AS n FROM transactions WHERE user_id = @uid AND occurred_on = CAST(@date AS date)');
+  return r.recordset[0].n;
+}
+
 async function findById(userId, id) {
   const pool = await getPool();
   const result = await pool
@@ -313,4 +367,4 @@ async function importCsv(userId, text) {
   });
 }
 
-module.exports = { list, summary, stats, findById, create, update, remove, exportCsv, importCsv };
+module.exports = { list, summary, stats, weeklyRecap, countOn, findById, create, update, remove, exportCsv, importCsv };

@@ -29,6 +29,29 @@ async function listForMonth(userId, month) {
   }));
 }
 
+/** One category's budget (null if unset) and what was spent on it in `month`. */
+async function statusFor(userId, categoryId, month) {
+  const { start, end } = monthRange(month);
+  const pool = await getPool();
+  const r = await pool
+    .request()
+    .input('uid', sql.Int, userId)
+    .input('cat', sql.Int, categoryId)
+    .input('start', sql.VarChar(10), start)
+    .input('end', sql.VarChar(10), end)
+    .query(`
+      SELECT c.name AS category, b.amount AS budget,
+             ISNULL((SELECT SUM(t.amount) FROM transactions t
+                     WHERE t.category_id = c.id AND t.type = 'expense'
+                       AND t.occurred_on >= CAST(@start AS date) AND t.occurred_on < CAST(@end AS date)), 0) AS spent
+      FROM categories c
+      LEFT JOIN budgets b ON b.category_id = c.id
+      WHERE c.id = @cat AND c.user_id = @uid
+    `);
+  const row = r.recordset[0];
+  return row && { category: row.category, budget: row.budget == null ? null : Number(row.budget), spent: Number(row.spent) };
+}
+
 /** Sets the monthly budget; an amount of 0 / empty removes it. */
 async function setBudget(userId, categoryId, rawAmount) {
   const pool = await getPool();
@@ -60,4 +83,4 @@ async function setBudget(userId, categoryId, rawAmount) {
     `);
 }
 
-module.exports = { listForMonth, setBudget };
+module.exports = { listForMonth, statusFor, setBudget };

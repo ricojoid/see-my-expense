@@ -1,12 +1,15 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { recurringApi, transactionsApi } from '../../api';
+import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
 import { useToast } from '../../context/ToastContext';
 import { defaultAccountId, rememberAccount } from '../../lib/accounts';
 import { accountIcon, categoryIcon } from '../../lib/categoryIcon';
 import { today } from '../../lib/dates';
 import { formatCurrency } from '../../lib/format';
+import { enqueue } from '../../lib/outbox';
+import { parseQuick } from '../../lib/quickParse';
 import Sheet from '../../components/ui/Sheet';
 import Segmented from '../../components/ui/Segmented';
 import Chip from '../../components/ui/Chip';
@@ -17,6 +20,7 @@ import PersonPicker from '../debts/PersonPicker';
 import { DEBT_CATEGORY } from '../debts/debtText';
 import AmountInput from './AmountInput';
 import DatePicker from './DatePicker';
+import QuickEntry from './QuickEntry';
 
 const COLLAPSED_CATEGORIES = 11;
 
@@ -134,21 +138,48 @@ function AccountChips({ accounts, value, onChange, exclude, tone }) {
 
 export default function TransactionEditor() {
   const { editor, closeEditor, categories, accounts, people, refresh } = useData();
+  const { user } = useAuth();
   const toast = useToast();
   const editing = editor.transaction;
   const [form, setForm] = useState(() => emptyForm(accounts));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [quick, setQuick] = useState('');
+  const quickBase = useRef(null);
 
   useEffect(() => {
     if (!editor.open) return;
     setForm(editing ? fromTransaction(editing) : { ...emptyForm(accounts), ...editor.preset });
     setError('');
+    setQuick('');
+    quickBase.current = null;
     // Only reset when the sheet opens, not when lists refresh behind it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor.open, editing]);
 
+  /**
+   * Quick entry owns the fields it understands: each keystroke re-parses the
+   * whole line on top of the form as it was before typing started.
+   */
+  const applyQuick = (text) => {
+    setQuick(text);
+    setError('');
+    if (!text.trim()) {
+      quickBase.current = null;
+      return;
+    }
+    if (!quickBase.current) quickBase.current = form;
+    const parsed = parseQuick(text, {
+      categories: categories.filter((c) => c.name !== DEBT_CATEGORY),
+      accounts,
+      today: today(),
+    });
+    setForm({ ...quickBase.current, debt: false, repeat: false, ...parsed });
+  };
+
   const set = (patch) => {
+    // A manual change sticks even if the quick line is edited again afterwards.
+    if (quickBase.current) quickBase.current = { ...quickBase.current, ...patch };
     setForm((f) => ({ ...f, ...patch }));
     setError('');
   };
@@ -202,15 +233,20 @@ export default function TransactionEditor() {
       if (editing) {
         await transactionsApi.update(editing.id, payload);
         toast('Transaction updated');
-      } else if (isDebt(form)) {
-        const created = await transactionsApi.create(payload);
-        toast(`${formatCurrency(form.amount)} ${form.type === 'expense' ? 'to' : 'from'} ${created.person} saved in Debts`);
-      } else if (form.repeat && form.type !== 'transfer') {
+      } else if (form.repeat && form.type !== 'transfer' && !isDebt(form)) {
         await recurringApi.create(payload);
         toast(`Saved, and it will repeat every month`);
       } else {
-        await transactionsApi.create(payload);
-        toast(`${form.type === 'income' ? 'Income' : form.type === 'expense' ? 'Expense' : 'Transfer'} of ${formatCurrency(form.amount)} saved`);
+        const created = await createOrQueue(payload);
+        if (!created) return;
+        toast(
+          isDebt(form)
+            ? `${formatCurrency(form.amount)} ${form.type === 'expense' ? 'to' : 'from'} ${created.person} saved in Debts`
+            : `${form.type === 'income' ? 'Income' : form.type === 'expense' ? 'Expense' : 'Transfer'} of ${formatCurrency(form.amount)} saved`
+        );
+        if (created.budgetAlert) {
+          toast(created.budgetAlert.message, { tone: created.budgetAlert.level === 'over' ? 'error' : 'info', duration: 6000 });
+        }
       }
       rememberAccount(form.accountId);
       refresh();
@@ -219,6 +255,20 @@ export default function TransactionEditor() {
       setError(err.message);
     } finally {
       setSaving(false);
+    }
+  };
+
+  /** Creates the transaction, or keeps it on the device when offline. Returns null when queued. */
+  const createOrQueue = async (payload) => {
+    try {
+      return await transactionsApi.create(payload);
+    } catch (err) {
+      if (err.status !== 0) throw err;
+      enqueue(user.id, payload);
+      rememberAccount(form.accountId);
+      closeEditor();
+      toast("You're offline. Saved on this device, it will sync when you're back online.", { tone: 'info', duration: 5000 });
+      return null;
     }
   };
 
@@ -277,6 +327,8 @@ export default function TransactionEditor() {
           save();
         }}
       >
+        {!editing && <QuickEntry value={quick} onChange={applyQuick} />}
+
         <Segmented
           options={TYPE_OPTIONS.filter((o) => o.value !== 'transfer' || accounts.length > 1)}
           value={form.type}

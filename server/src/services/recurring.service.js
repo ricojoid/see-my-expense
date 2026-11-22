@@ -1,5 +1,5 @@
 const { sql, getPool, withTransaction } = require('../config/db');
-const { todayLocal, dueRuns } = require('../lib/dates');
+const { todayLocal, dueRuns, monthRange } = require('../lib/dates');
 const { notFound } = require('../lib/http');
 const { assertTransactionRefs } = require('./ownership.service');
 
@@ -21,6 +21,18 @@ async function list(userId) {
     .request()
     .input('uid', sql.Int, userId)
     .query(`${SELECT_RULE} WHERE r.user_id = @uid ORDER BY r.active DESC, r.day_of_month, r.id`);
+  return result.recordset.map(toRule);
+}
+
+/** Active rules still to run this month (after today), soonest first. Call after materialize(). */
+async function upcoming(userId, today = todayLocal()) {
+  const { end } = monthRange(today.slice(0, 7));
+  const pool = await getPool();
+  const result = await pool
+    .request()
+    .input('uid', sql.Int, userId)
+    .input('end', sql.VarChar(10), end)
+    .query(`${SELECT_RULE} WHERE r.user_id = @uid AND r.active = 1 AND r.next_run_on < CAST(@end AS date) ORDER BY r.next_run_on, r.id`);
   return result.recordset.map(toRule);
 }
 
@@ -140,4 +152,4 @@ async function bookDueRuns(userId) {
   return booked;
 }
 
-module.exports = { list, create, setActive, remove, materialize };
+module.exports = { list, upcoming, create, setActive, remove, materialize };

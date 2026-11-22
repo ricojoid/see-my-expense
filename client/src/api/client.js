@@ -6,6 +6,7 @@ export const tokenStore = {
   clear: () => localStorage.removeItem(TOKEN_KEY),
 };
 
+/** status 0 = the request never reached the server (offline, DNS, server down). */
 export class ApiError extends Error {
   constructor(status, message, details) {
     super(message);
@@ -65,5 +66,5 @@ export const http = {
   post: (path, body) => request('POST', path, { body }),
   put: (path, body) => request('PUT', path, { body }),
   patch: (path, body) => request('PATCH', path, { body }),
-  del: (path) => request('DELETE', path),
+  del: (path, body) => request('DELETE', path, { body }),
 };
