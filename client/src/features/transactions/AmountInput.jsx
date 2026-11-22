@@ -7,7 +7,7 @@ const TONE = { income: 'text-income', expense: 'text-expense', transfer: 'text-t
 /** Big, thumb-friendly amount entry with quick-add chips. */
 export default function AmountInput({ value, onChange, type, autoFocus }) {
   return (
-    <div className="rounded-3xl border border-line bg-surface-2/70 p-4">
+    <div className="field-box rounded-3xl bg-surface-2/70 p-4">
       <label className="flex items-baseline justify-center gap-2">
         <span className="text-lg font-bold text-ink-3">Rp</span>
         <input

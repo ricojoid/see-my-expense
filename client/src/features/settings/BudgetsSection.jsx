@@ -28,7 +28,11 @@ function BudgetRow({ row, onSave }) {
         <span className="block truncate font-medium">{row.category}</span>
         <span className="tabular text-xs text-ink-3">Spent {money(row.spent)} this month</span>
       </span>
-      <label className={`flex w-36 items-center gap-1 rounded-xl border bg-surface-2 px-3 transition-colors ${dirty ? 'border-accent/60' : 'border-line'}`}>
+      <label
+        className={`flex w-36 items-center gap-1 rounded-xl border bg-surface-2 px-3 transition focus-within:border-accent/70 focus-within:shadow-[0_0_0_3px_rgba(198,244,50,0.12)] ${
+          dirty ? 'border-accent/60' : 'border-line'
+        }`}
+      >
         <span className="text-xs text-ink-3">Rp</span>
         <input
           inputMode="numeric"

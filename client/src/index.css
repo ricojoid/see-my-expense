@@ -42,8 +42,15 @@
     margin: 0;
   }
 
+  /* Keyboard focus ring for buttons and links. Text fields show focus on their own border instead
+     (a ring there doubled up with the border and looked messy). */
   :focus-visible {
-    @apply outline-none ring-2 ring-accent/70 ring-offset-2 ring-offset-bg;
+    @apply outline-none ring-2 ring-accent/70;
+  }
+  input:focus-visible,
+  textarea:focus-visible,
+  select:focus-visible {
+    @apply ring-0;
   }
 }
 
@@ -54,7 +61,12 @@
 
   .field {
     @apply w-full rounded-2xl border border-line bg-surface-2 px-4 py-3 text-ink placeholder:text-ink-3
-      outline-none transition focus:border-accent/60 focus:bg-surface-3;
+      outline-none transition focus:border-accent/70 focus:bg-surface-3 focus:shadow-[0_0_0_3px_rgba(198,244,50,0.12)];
+  }
+
+  /* A box that contains a bare input (amount, quick entry): the box shows the focus. */
+  .field-box {
+    @apply border border-line transition focus-within:border-accent/70 focus-within:shadow-[0_0_0_3px_rgba(198,244,50,0.12)];
   }
 
   .label {
